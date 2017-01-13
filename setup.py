@@ -22,8 +22,9 @@ CLASSIFIERS = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 2.7",
 ]
-# INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','tensorflow']
-INSTALL_REQUIRES = ['tensorflow']
+# INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','scikit','tensorflow']
+# INSTALL_REQUIRES = ['tensorflow']
+INSTALL_REQUIRES = []
 
 ###################################################################
 
