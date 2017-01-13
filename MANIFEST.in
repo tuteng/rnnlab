@@ -2,3 +2,5 @@ include *.rst *.txt LICENSE
 recursive-include tests *.py
 recursive-include docs *.rst *.py
 recursive-include data *.txt
+recursive-include src *.py
+prune docs/_build
