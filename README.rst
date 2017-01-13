@@ -4,7 +4,8 @@ Rnnlab
 
 Python API to train and analyze RNN language models using Tensorflow
 
-#### Installation: 
+Installation:
+============
 
 Rnnlab can be installed via pypi:
 
