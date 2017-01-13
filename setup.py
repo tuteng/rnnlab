@@ -18,9 +18,8 @@ CLASSIFIERS = [
     "Intended Audience :: Science/Research",
     "Natural Language :: English",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: Ubuntu",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 2",
     "Programming Language :: Python :: 2.7",
 ]
 # INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','tensorflow']
