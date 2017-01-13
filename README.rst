@@ -30,11 +30,11 @@ Example Script:
 ============
 
 This script imports ``gen_user_configs`` which loads the information contained in
- the configurations file created above. In combination with a ``for`` loop, multiple
- configurations can be loaded for sequential training of multiple models. 
+the configurations file created above. In combination with a ``for`` loop, multiple
+configurations can be loaded for sequential training of multiple models.
  
 We also import the ``RNN`` class, which, when instantiated, creates a Tensorflow graph of the user-specified
- RNN architecture. This class contains a ``train``ing method which is used to train the model.
+RNN architecture. This class contains a ``train``ing method which is used to train the model.
 
 .. -code-begin-
 
@@ -58,4 +58,4 @@ Project Information
 ``rnnlab`` is released under the `MIT <http://choosealicense.com/licenses/mit/>`_ license,
 the code on `GitHub <https://github.com/phueb/rnnlab>`_,
 and the latest release on `PyPI <https://pypi.org/project/rnnlab/>`_.
-It’s rigorously tested on Python 2.7.
+Tested on Python 2.7.
