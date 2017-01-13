@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+
+    <style type="text/css">
+        html {
+            font-family : "Helvetica",serif;
+            text-decoration: none;
+            background : white;
+        }
+        body {
+            background : white;
+            max-width : 1000px;
+            margin : 50px auto;
+        }
+        #header {
+            padding-bottom: 20px;
+            padding-top: 20px;
+            background : #FFCA81;
+            color : black;
+            border-radius : 30px;
+        }
+        tr {
+            text-align:center;
+            height:30px;
+            padding-right: 50px;
+        }
+        A {
+            text-decoration:none;
+            color: black;
+        }
+        #btns {
+            text-align : center;
+        }
+        #inner-header {
+            text-align : center;
+        }
+        #main {
+            padding-top : 20px;
+            background : none;
+        }
+        #mainBottom {
+            margin: 10px auto;
+            padding : 20px;
+            background : #FFCA81;
+            border-radius : 30px;
+        }
+        .button {
+            background-color: #FF9B12;
+            border: none;
+            color: black;
+            padding: 15px 32px;
+            text-align: center;
+            display: inline-block;
+            cursor : pointer;
+        }
+        .dropdown {
+           color: black;
+           background-color: white;
+           padding-left: 15px;
+        }
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgb(0,0,0); /* Fallback color */
+            background-color: rgba(0,0,0,0.8); /* Black w/ opacity */
+        }
+
+        .modal-content {
+            text-align : center;
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+
+    <meta charset="UTF-8">
+    <title>RNNLAB Interface</title>
+</head>
+<body>
+    <div id="header">
+        <div id="inner-header">
+            <h1><a href="{{url_for('home')}}">RNNLAB Interface</a></h1>
+            <h3>Last update: <i>{{log_mtime}}</i></h3>
+        </div>
+        <div id="btns">
+            <button id="dimredBtn" class="button">Plot 2D Acts</button>
+            <button id="dhBtn" class="button">Plot Dh Acts</button>
+            <button id="bdBtn" class="button">Plot Ba Breakdown</button>
+            <button id="clustBtn" class="button">Plot Cat Cluster</button>
+        </div>
+    </div>
+    <div id="main">
+            <form action="{{url_for('home')}}">
+                <table border="0" cellpadding="10" cellspacing="0" style="margin:0 auto;">
+                    <tr>
+                        {% for header in headers %}
+                            <th>{{header}}</th>
+                        {% endfor %}
+                    </tr>
+                    {% for log_entry in log_entries %}
+                        <tr>
+                            {% for cell in log_entry %}
+                                <td>{{cell}}</td>
+                            {% endfor %}
+                            <td style="text-align:left">
+                                {% if not log_entry.0==sel_model_name %}
+                                    <input type="radio" value="{{log_entry.0}}" name="model_name" onchange="this.form.submit()">
+                                {% else %}
+                                    <input type="radio" value="{{log_entry.0}}" name="model_name" checked="checked">
+                                    Block:&nbsp
+                                    <select name="block_name" onchange="this.form.submit()" class="dropdown" title="title">
+                                        {% for block_name in block_names %}
+                                            {% if block_name==sel_block_name %}
+                                                <option value="{{block_name}}" selected="selected">{{block_name}}</option>
+                                            {% else %}
+                                                <option value="{{block_name}}">{{block_name}}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+                <div id="mainBottom">
+                    {% if sel_block_name != 'Select' %}
+                        Choose category:&nbsp
+                        <select name="cat" onchange="this.form.submit()" class="dropdown" title="title">
+                            {% for cat in cats %}
+                                {% if cat==sel_cat %}
+                                    <option value="{{cat}}" selected="selected">{{cat}}</option>
+                                {% else %}
+                                    <option value="{{cat}}">{{cat}}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        Choose probe:&nbsp
+                        <select name="probe" onchange="this.form.submit()" class="dropdown" title="title">
+                            {% for probe in probes %}
+                                {% if probe==sel_probe %}
+                                    <option value="{{probe}}" selected="selected">{{probe}}</option>
+                                {% else %}
+                                    <option value="{{probe}}">{{probe}}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    {% endif %}
+                </div>
+            </form>
+    </div>
+
+
+    <div id="dimredModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if acts_2d_img %}
+                <img src="data:image/png;base64,{{ acts_2d_img }}">
+            {% else %}
+                <h3 style="color:red">Please select block</h3>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div id="dhModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if token_acts_dh_img %}
+                <img src="data:image/png;base64,{{ token_acts_dh_img }}">
+                <img src="data:image/png;base64,{{ token_corcoeff_hist_img }}">
+                <img src="data:image/png;base64,{{ acts_dh_img }}">
+            {% else %}
+                <h3 style="color:red">Please select probe</h3>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="bdModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if ba_breakdown_scatter_img %}
+                <img src="data:image/png;base64,{{ ba_breakdown_scatter_img }}">
+                <img src="data:image/png;base64,{{ ba_breakdow_img }}">
+            {% else %}
+                <h3 style="color:red">Please select block</h3>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="clustModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if cat_cluster_img %}
+                <img src="data:image/png;base64,{{ cat_cluster_img }}">
+            {% else %}
+                <h3 style="color:red">Please select category</h3>
+            {% endif %}
+        </div>
+    </div>
+
+
+    <script type='text/javascript'>
+        var $dimredModal = $('#dimredModal');
+        var $dhModal = $('#dhModal');
+        var $bdModal = $('#bdModal');
+        var $clustModal = $('#clustModal');
+
+        $(document).ready(function() {
+            $('#dimredBtn').click(function () {
+                $dimredModal.css('display', 'block');
+            });
+            $('#dhBtn').click(function () {
+                $dhModal.css('display', 'block');
+            });
+            $('#bdBtn').click(function () {
+                $bdModal.css('display', 'block');
+            });
+            $('#clustBtn').click(function () {
+                $clustModal.css('display', 'block');
+            });
+
+
+
+            $('.close').click(function () {
+                $dimredModal.css('display', 'none');
+                $dhModal.css('display', 'none');
+                $bdModal.css('display', 'none');
+                $clustModal.css('display', 'none');
+            });
+
+
+        });
+
+
+
+
+
+
+
+        // TODO window click doesn't work
+        $(window).click(function (event) {
+            if (event.target == $dimredModal) {
+                $dimredModal.css('display', 'none');
+                $('#dhModal').css('display', 'none');
+            }
+        });
+    </script>
+
+
+</body>
+</html>
