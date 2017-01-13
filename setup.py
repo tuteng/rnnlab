@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 
 ###################################################################
 
-NAME = "attrs"
+NAME = "rnnlab"
 PACKAGES = find_packages(where="src")
 META_PATH = os.path.join("src", "rnnlab", "__init__.py")
 KEYWORDS = ["rnn", "tensorflow", "language modeling"]
