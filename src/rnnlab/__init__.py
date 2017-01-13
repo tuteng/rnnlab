@@ -6,7 +6,7 @@ from rnnhelper import gen_user_configs, load_rc
 
 
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 __title__ = "rnnlab"
 __description__ = "Python API for training RNN Lanugage Models with Tensorflow"
