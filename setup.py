@@ -14,8 +14,8 @@ PACKAGES = find_packages(where="src")
 META_PATH = os.path.join("src", "rnnlab", "__init__.py")
 KEYWORDS = ["rnn", "tensorflow", "language modeling"]
 CLASSIFIERS = [
-    "Development Status :: 5 - Production/Stable",
-    "Intended Audience :: Scientists",
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
     "Natural Language :: English",
     "License :: OSI Approved :: MIT License",
     "Operating System :: Ubuntu",
@@ -23,7 +23,8 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 2",
     "Programming Language :: Python :: 2.7",
 ]
-INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','tensorflow']
+# INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','tensorflow']
+INSTALL_REQUIRES = ['tensorflow']
 
 ###################################################################
 
