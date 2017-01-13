@@ -35,7 +35,9 @@ def read(*parts):
     Build an absolute path from *parts* and and return the contents of the
     resulting file.  Assume UTF-8 encoding.
     """
-    with codecs.open(os.path.join(HERE, *parts), "r", "utf-8") as f:
+    print
+    print os.path.join(HERE, *parts)
+    with codecs.open(os.path.join(HERE, *parts), "rb", "utf-8") as f:
         return f.read()
 
 
@@ -67,7 +69,7 @@ if __name__ == "__main__":
         maintainer=find_meta("author"),
         maintainer_email=find_meta("email"),
         keywords=KEYWORDS,
-        long_description=read("README.md"),
+        long_description=read("README.rst"),
         packages=PACKAGES,
         package_dir={"": "src"},
         zip_safe=False,
