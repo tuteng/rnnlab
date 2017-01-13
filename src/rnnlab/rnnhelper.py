@@ -14,9 +14,7 @@ class RNNHelper(object):
     def __init__(self):
         ##########################################################################
         # define directories 
-        working_dir = os.path.dirname(os.path.abspath(__file__))
-        self.rnn_dir = os.path.abspath(working_dir + os.sep + '..')
-        self.data_dir = os.path.join(self.rnn_dir, 'data')
+        self.data_dir = os.path.abspath('data')
         self.runs_dir = load_rc('runs_dir')
         ##########################################################################
         # assign instance variables

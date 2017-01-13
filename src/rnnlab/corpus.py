@@ -14,9 +14,7 @@ class Corpus(object):
     def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None):
         ##########################################################################
         # define directories
-        working_dir = os.path.dirname(os.path.abspath(__file__))
-        self.rnn_dir = os.path.abspath(working_dir + os.sep + '..' + os.sep + '..')
-        self.data_dir = os.path.join(self.rnn_dir, 'data') #TODO data dir doesn't work with pip -> need to include it in build
+        self.data_dir = os.path.abspath('data')
         ##########################################################################
         # assign instance variables
         self.corpus_name = corpus_name
