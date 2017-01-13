@@ -16,7 +16,7 @@ class Corpus(object):
         # define directories
         working_dir = os.path.dirname(os.path.abspath(__file__))
         self.rnn_dir = os.path.abspath(working_dir + os.sep + '..' + os.sep + '..')
-        self.data_dir = os.path.join(self.rnn_dir, 'data')
+        self.data_dir = os.path.join(self.rnn_dir, 'data') #TODO data dir doesn't work with pip -> need to include it in build
         ##########################################################################
         # assign instance variables
         self.corpus_name = corpus_name
