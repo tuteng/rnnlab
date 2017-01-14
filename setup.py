@@ -74,8 +74,8 @@ if __name__ == "__main__":
         zip_safe=False,
         classifiers=CLASSIFIERS,
         install_requires=INSTALL_REQUIRES,
-        package_data={'rnnlab': ['data/probes/*.txt',
-                                 'data/childes2_3YO/*.txt',
-                                 'data/toyxy/*.csv']},
-        # include_package_data=True, # works wihtout this
+        # not including this data because download script is supplied
+        # package_data={'rnnlab': ['data/probes/*.txt',
+        #                          'data/childes2_3YO/*.txt',
+        #                          'data/toyxy/*.csv']},
     )
