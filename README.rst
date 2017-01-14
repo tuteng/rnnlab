@@ -66,6 +66,15 @@ to disk. An included browser application is used to visualize the data after tra
     >>> log_app.start()
     * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
 
+.. figure:: example3.png
+    :width: 200px
+    :align: center
+    :height: 100px
+    :alt: alternate text
+    :figclass: align-center
+
+    This is the browser application interface where you can select a trained model and plot its data
+
 Example of a dimensionality reduction plot produced using the browser application:
 
 .. figure:: example.png
