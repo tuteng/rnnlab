@@ -74,6 +74,8 @@ if __name__ == "__main__":
         zip_safe=False,
         classifiers=CLASSIFIERS,
         install_requires=INSTALL_REQUIRES,
-        package_data={'src': ['*.txt']}, # this may have to be played with
-        include_package_data=True, # may have to remove this?
+        package_data={'rnnlab': ['data/probes/*.txt',
+                                 'data/childes2_3YO/*.txt',
+                                 'data/toyxy/*.txt']},
+        # include_package_data=True, # works wihtout this
     )

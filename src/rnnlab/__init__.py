@@ -6,7 +6,7 @@ from rnnhelper import gen_user_configs, load_rc
 
 
 
-__version__ = "1.0.5"
+__version__ = "1.0.71"
 
 __title__ = "rnnlab"
 __description__ = "Python API for training RNN Lanugage Models with Tensorflow"
@@ -18,3 +18,6 @@ __email__ = "phueb001@ucr.edu"
 
 __license__ = "MIT"
 __copyright__ = "Copyright (c) 2017 Philip Huebner"
+
+
+
