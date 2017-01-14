@@ -13,8 +13,12 @@ class RNNHelper(object):
 
     def __init__(self):
         ##########################################################################
-        # define directories 
-        self.data_dir = os.path.join('data')  # this doesn't work from pycharm, but with pip yes
+        # define directories
+        dev_path = os.path.join('rnnlab', 'data')
+        if os.path.isdir(dev_path):
+            self.data_dir = dev_path
+        else:
+            self.data_dir = os.path.join('data')
         self.runs_dir = load_rc('runs_dir')
         ##########################################################################
         # assign instance variables
