@@ -58,14 +58,21 @@ RNN architecture. This class contains a ``train`` ing method which is used to tr
 
 
 During training, hidden state activations for user-specified words (probes) are saved into a pandas dataframe and saved
-to disk. An included web application is used to visualize the data during and after training.
+to disk. An included web application is used to visualize the data during and after training. In a python shell:
+
+``
+from rnnlab import log_app
+log_app.start()
+``
 
 Customization
 =============
 
 If you would like to train on a different corpus, create a directory 'data' in your working directory, and place a
 folder with the name of the corpus inside it. Inside this folder, put the corpus
-(with documents separated by new lines) as a .txt file titled 'corpus.txt'. To load a custom list of probes, create
+(with documents separated by new lines) as a .txt file titled 'corpus.txt'.
+
+To load a custom list of probes, create
 a folder named 'probes' inside the data directory. Then, save a list of probes to a .txt file (each probe separated by a
 new line) and make sure that the name you give it is reflected in 'rnnlab_user_configs.csv'. Done!
 
