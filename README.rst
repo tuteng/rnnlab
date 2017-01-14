@@ -40,7 +40,7 @@ RNN architecture. This class contains a ``train`` ing method which is used to tr
 
 .. code-block:: pycon
 
-   >>> from rnnlab import gen_user_configs
+   >>> from rnnlab import gen_user_configs, get_childes_data
    >>> from rnnlab import RNN
    >>>
    >>> get_childes_data() # downloads childes corpus from github

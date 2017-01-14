@@ -238,6 +238,8 @@ def load_rc(string): # .rnnlabrc file should specify gpu/cpu and runs_dir path
 
 def get_childes_data():
     ##########################################################################
+    print 'Downloading childes data to {}...'.format(os.getcwd())
+    ##########################################################################
     import requests
     if not os.path.isdir('data'): os.mkdir('data')
     os.chdir('data')
@@ -245,6 +247,7 @@ def get_childes_data():
     for dir, file_names in [('childes2_3YO', ['vocab_3YO_4238.txt', 'corpus.txt']), ('probes',['semantic.txt'])]:
         if not os.path.isdir(dir): os.mkdir(dir)
         os.chdir(dir)
+        print 'Donwloading {}'.format(','.join(file_names))
         for file_name in file_names:
             r = requests.get('https://raw.githubusercontent.com/phueb/rnnlab/master/src/rnnlab/data/{}/{}'
                              .format(dir, file_name))
