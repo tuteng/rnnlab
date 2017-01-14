@@ -77,7 +77,7 @@ Example of a dimensionality reduction plot produced using the browser applicatio
 
     SVD and t-SNE algorithms are used to map a trained model's hidden activation state space into 2 dimensions
 
-.. figure:: example3.png
+.. figure:: example2.png
     :width: 200px
     :align: center
     :height: 100px
