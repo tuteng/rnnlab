@@ -232,3 +232,23 @@ def load_rc(string): # .rnnlabrc file should specify gpu/cpu and runs_dir path
         sys.exit('rnnlab: Did not find "{}" in .rnnlabrc'.format(rc))
     ##########################################################################
     return rc
+
+
+
+
+def get_childes_data():
+    ##########################################################################
+    import requests
+    if not os.path.isdir('data'): os.mkdir('data')
+    os.chdir('data')
+    ##########################################################################
+    for dir, file_names in [('childes2_3YO', ['vocab_3YO_4238.txt', 'corpus.txt']), ('probes',['semantic.txt'])]:
+        if not os.path.isdir(dir): os.mkdir(dir)
+        os.chdir(dir)
+        for file_name in file_names:
+            r = requests.get('https://raw.githubusercontent.com/phueb/rnnlab/master/src/rnnlab/data/{}/{}'
+                             .format(dir, file_name))
+            with open(file_name,'w') as f:
+                f.write(r.text)
+        os.chdir('..')
+    os.chdir('..')

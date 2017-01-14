@@ -1,5 +1,5 @@
 from rnn import RNN
-from rnnhelper import gen_user_configs, load_rc
+from rnnhelper import gen_user_configs, load_rc, get_childes_data
 
 
 
