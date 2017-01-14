@@ -14,7 +14,7 @@ class Corpus(object):
     def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None):
         ##########################################################################
         # define directories
-        self.data_dir = 'data'
+        self.data_dir = os.path.join('src', 'rnnlab','data')
         ##########################################################################
         # assign instance variables
         self.corpus_name = corpus_name
@@ -34,6 +34,9 @@ class Corpus(object):
         path = os.path.join(self.data_dir, self.corpus_name)
         file_name = 'corpus.txt'
         corpus_content = []
+
+        print os.getcwd()
+        print
         with open(os.path.join(path, file_name),'r') as f:
             for doc in f.readlines():
                 corpus_content.append(doc.strip().strip('\n'))

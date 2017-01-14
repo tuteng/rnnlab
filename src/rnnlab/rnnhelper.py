@@ -14,7 +14,7 @@ class RNNHelper(object):
     def __init__(self):
         ##########################################################################
         # define directories 
-        self.data_dir = os.path.abspath('data')
+        self.data_dir = os.path.join('src', 'rnnlab', 'data')
         self.runs_dir = load_rc('runs_dir')
         ##########################################################################
         # assign instance variables
