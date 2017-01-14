@@ -14,7 +14,7 @@ Rnnlab can be installed via pypi:
 Before Using:
 =============
 
-In your your home directory, create 'rnnlab_user_configs.csv'. A variety of training hyperparameters and other
+In your your home directory, create **rnnlab_user_configs.csv**. A variety of training hyperparameters and other
 configurations may be specified here. Not all are required. A bare-bones example:
 
 +---------------+------------------+-------------+---------------+--------------+-----------------+
@@ -23,7 +23,7 @@ configurations may be specified here. Not all are required. A bare-bones example
 | 0.03          | 512              | 7           | childes2_3YO  | semantic     | vocab_3YO_4238  |
 +---------------+------------------+-------------+---------------+--------------+-----------------+
 
-Next, create '.rnnlabrc' and include the following inside: ::
+Next, create **.rnnlabrc** and include the following inside: ::
 
     runs_dir <path to where you want to save model data>
     gpu <True or False depending on your setup>
@@ -70,13 +70,13 @@ to disk. An included web application is used to visualize the data during and af
 Customization
 =============
 
-If you would like to train on a different corpus, create a directory 'data' in your working directory, and place a
+If you would like to train on a different corpus, create a directory **data** in your working directory, and place a
 folder with the name of the corpus inside it. Inside this folder, put the corpus
-(with documents separated by new lines) as a .txt file titled 'corpus.txt'.
+(with documents separated by new lines) as a .txt file titled **corpus.txt**.
 
 To load a custom list of probes, create
-a folder named 'probes' inside the data directory. Then, save a list of probes to a .txt file (each probe separated by a
-new line) and make sure that the name you give it is reflected in 'rnnlab_user_configs.csv'. Done!
+a folder named **probes** inside the data directory. Then, save a list of probes to a .txt file (each probe separated by a
+new line) and make sure that the name you give it is reflected in **rnnlab_user_configs.csv**. Done!
 
 Project Information
 ===================
