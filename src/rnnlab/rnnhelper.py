@@ -157,7 +157,7 @@ class RNNHelper(object):
                     configs_dict[config_name] = config_value
                     overwritten_list.append(config_name)
         ##########################################################################
-        # check configs
+        # check that all required configs specified
         for c in ['corpus_name']:
             if c not in overwritten_list: sys.exit('rnnlab WARNING: Did not find "{}" in user configs'.format(c))
         if 'freq_cutoff' not in overwritten_list and 'vocab_file_name' not in overwritten_list:

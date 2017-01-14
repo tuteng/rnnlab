@@ -5,33 +5,39 @@ Rnnlab
 Python API to train and analyze RNN language models using Tensorflow
 
 Installation:
-==============
+=============
 
 Rnnlab can be installed via pypi:
 
 ``pip install rnnlab``
 
 Before Using:
-==============
+=============
 
-In your your home directory, create a file 'rnnlab_user_configs.csv'. Inside, a number of required, and optional,
-training hyperparameters and courpus information may be specified.
+In your your home directory, create 'rnnlab_user_configs.csv'. A variety of training hyperparameters and other
+configurations may be specified here. Not all required. A bare-bones example:
 
-A bare-bones example of the configurations file for a single model:
++---------------+------------------+-------------+---------------+--------------+-----------------+
+| learning_rate | num_hidden_units | bptt_steps  | corpus_name   | probes_name  | vocab_file_name |
++---------------+------------------+-------------+---------------+--------------+-----------------+
+| 0.03          | 512              | 7           | childes2_3YO  | semantic     | vocab_3YO_4238  |
++---------------+------------------+-------------+---------------+--------------+-----------------+
 
-+---------------+------------------+--------------+--------------+
-| learning_rate | num_hidden_units | corpus_name  | probes_name  |
-+---------------+------------------+--------------+--------------+
-| 0.03          | 512              | 'childes'    | 'semantic'   |
-+---------------+------------------+--------------+--------------+
+Next, create '.rnnlabrc' and include the following inside: ::
 
+    runs_dir <path to where you want to save model data>
+    gpu <True or False depending on your setup>
+
+
+That's it! You've just told rnnlab where to save model data and whether or not to use the gpu (recommended) to speed up training time.
 
 Example Script:
-================
+===============
 
 This script imports ``gen_user_configs`` which loads the information contained in
 the configurations file created above. In combination with a ``for`` loop, multiple
-configurations can be loaded for sequential training of multiple models.
+configurations can be loaded for sequential training of multiple models. ``get_childes_data``
+downloads the default corpus from the ``rnnlab`` github repository.
 
 We also import the ``RNN`` class, which, when instantiated, creates a Tensorflow graph of the user-specified
 RNN architecture. This class contains a ``train`` ing method which is used to train the model.
@@ -53,6 +59,11 @@ RNN architecture. This class contains a ``train`` ing method which is used to tr
 
 During training, hidden state activations for user-specified words (probes) are saved into a pandas dataframe and saved
 to disk. An included web application is used to visualize the data during and after training.
+
+Customization
+=============
+
+If you would like to train on a different corpus, create a directory 'data' in your working directory, and place a folder  with the name of the corpus inside it. Inside this folder, put the corpus (with documents separated by new lines) as a text with titled 'corpus.txt'. An alternative set of probes may be loaded from a txt file with the name for your probes located in 'data/probes'.
 
 Project Information
 ===================

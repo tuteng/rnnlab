@@ -189,14 +189,14 @@ class RNN(RNNHelper):
                 writer.writerow(row)
 
 
-    def make_log_entry(self, write_header=False):
+    def make_log_entry(self):
         ##########################################################################
         # append model configs to log
         configs_dict = self.rnn.configs_dict.copy()
         for entry_to_pop in ['flavor', 'model_name', 'corpus_name']:
             configs_dict.pop(entry_to_pop)
         writer = csv.writer(open(self.log_path, 'a'))
-        if write_header:
+        if not os.path.isfile(self.log_path):
             header = [str(key) for key in configs_dict.keys()]
             header.insert(0, 'model_name')
             header.append('completed')
