@@ -14,7 +14,7 @@ class Corpus(object):
     def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None):
         ##########################################################################
         # define directories
-        self.data_dir = os.path.join('src', 'rnnlab','data')
+        self.data_dir = os.path.join('data') # this doesn't work from pycharm, but with pip yes
         ##########################################################################
         # assign instance variables
         self.corpus_name = corpus_name

@@ -24,7 +24,7 @@ class DataBase:
     def __init__(self, configs_dict, df, block_name):
         ##########################################################################
         # define directories
-        self.data_dir = os.path.join('src', 'rnnlab', 'data')
+        self.data_dir = os.path.join('data')  # this doesn't work from pycharm, but with pip yes
         self.runs_dir = load_rc('runs_dir')
         ##########################################################################
         # assign instance variables
