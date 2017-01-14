@@ -136,6 +136,14 @@ class DataBase:
         ##########################################################################
         return probe_simmat
 
+    def make_cat_probe_list_dict(self):
+        ##########################################################################
+        cat_probe_list_dict = {cat: [probe for probe in self.probe_list
+                                     if self.probe_cat_dict[probe] == cat]
+                               for cat in self.cat_list}
+        ##########################################################################
+        return cat_probe_list_dict
+
 
     def get_ba_breakdown_data(self):
         ##########################################################################
@@ -151,8 +159,7 @@ class DataBase:
         cat_ba_dict = df_cat_ba.to_dict()['token_ba']
         ##########################################################################
         # make cat_probe_list_dict
-        cat_probe_list_dict = {cat: [probe for probe in self.probe_list
-                                     if self.probe_cat_dict[probe] == cat] for cat in self.cat_list}
+        cat_probe_list_dict = self.make_cat_probe_list_dict()
         ##########################################################################
         # make token_ba_row
         token_ba_row = self.df[['probe','token_ba']].groupby('probe').first()['token_ba'].as_matrix()
@@ -227,21 +234,20 @@ class DataBase:
         # inits
         num_probes = len(self.probe_list)
         num_cats = len(self.cat_list)
-        cat_dim_dict = {}
+        cat_sim_dict = {}
         ##########################################################################
         # make category sim dict
-        for category1 in self.cat_list:
-            for category2 in self.cat_list:
-                cat_dim_dict[category1][category2] = []
+        cat_sim_dict = {cat_outer : {cat_inner : [] for cat_inner in self.cat_list}
+                        for cat_outer in self.cat_list}
         for i in range(num_probes):
-            word1 = self.probe_list[i]
-            category1 = self.probe_cat_dict[word1]
+            probe1 = self.probe_list[i]
+            cat1 = self.probe_cat_dict[probe1]
             for j in range(num_probes):
                 if i != j:
-                    word2 = self.probe_list[j]
-                    category2 = self.probe_cat_dict[word2]
+                    probe2 = self.probe_list[j]
+                    cat2 = self.probe_cat_dict[probe2]
                     sim = probe_simmat[i, j]
-                    cat_dim_dict[category1][category2].append(sim)
+                    cat_sim_dict[cat1][cat2].append(sim)
         ##########################################################################
         # make category simmat
         cat_simmat = np.zeros([num_cats, num_cats], float)
@@ -249,7 +255,7 @@ class DataBase:
             cat1 = self.cat_list[i]
             for j in range(num_cats):
                 cat2 = self.cat_list[j]
-                sims = np.array(cat_dim_dict[cat1][cat2]) # this contains a list of sims
+                sims = np.array(cat_sim_dict[cat1][cat2]) # this contains a list of sims
                 sim_mean = sims.mean()
                 cat_simmat[self.cat_list.index(cat1), self.cat_list.index(cat2)] = sim_mean
         ##########################################################################
@@ -370,6 +376,83 @@ class DataBase:
         # TODO finish this
 
 
+    def gen_neighbor_name_and_sim(self, probe, probe_simmat):
+        ##########################################################################
+        # convert probe_simmat to sim_tuples_list_list
+        sim_tuples_list_list = []
+        for row_id, row in enumerate(probe_simmat):
+            sim_tuples_list_list.append([(target, sim) for target, sim in zip(self.probe_list, row)])
+        ##########################################################################
+        # generate neighbors_name, neighbors_sim
+        neighbors_for_probe = sorted(sim_tuples_list_list[self.probe_id_dict[probe]], key=itemgetter(1), reverse=True)
+        num_total_neighbors = len(neighbors_for_probe)
+        for neighbor_id in range(num_total_neighbors):
+            ##########################################################################
+            neighbor_name = neighbors_for_probe[neighbor_id][0]
+            neighbor_sim = neighbors_for_probe[neighbor_id][1]
+            if neighbor_id != 0: yield neighbor_name, neighbor_sim
+
+
+    def make_neighbors_table_fig(self, cat, num_neighbors=10, num_trunc_cols=5, is_titled=False):
+        ##########################################################################
+        # calc probe_simmat
+        probe_simmat = self.calc_probe_sim_mat()
+        ##########################################################################
+        # get col_labels
+        cat_probe_list_dict = self.make_cat_probe_list_dict()
+        col_labels = cat_probe_list_dict[cat]
+        ##########################################################################
+        # inits
+        neighbors_mat_list = []
+        col_labels_list = []
+        ##########################################################################
+        # make neighbors_mat_list and col_labels_list
+        for i in range(0, len(col_labels), num_trunc_cols): # split col_labels into even sized lists
+            truncated_col_labels = col_labels[i:i + num_trunc_cols]
+            neighbors_mat = np.chararray((num_neighbors, num_trunc_cols), itemsize=20)
+            neighbors_mat[:] = '' # initialize so that matplotlib can read table
+            for probe_id, probe in enumerate(truncated_col_labels):
+                generator = self.gen_neighbor_name_and_sim(probe, probe_simmat)
+                for neighbors_id in range(num_neighbors):
+                    neighbor_name, neighbor_sim = next(generator)
+                    neighbors_mat[neighbors_id, probe_id] = '{:>15} {:.2f}'.format(neighbor_name, neighbor_sim)
+            neighbors_mat_list.append(neighbors_mat)
+            length_diff = num_trunc_cols - len(truncated_col_labels)
+            for i in range(length_diff): truncated_col_labels.append(' ')  # add space so table can be read properly
+            col_labels_list.append(truncated_col_labels)
+        ##########################################################################
+        # fig settings
+        num_tables = len(neighbors_mat_list)
+        nrows, ncols = num_neighbors, num_trunc_cols
+        hcell, wcell = 0.3, 2.5
+        hpad, wpad = 0.1, 0
+        figsize = (ncols * wcell + wpad, (nrows * hcell + hpad) * num_tables)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 10
+        label_fontsize = 4
+        linewidth = 2.0
+        ##########################################################################
+        # fig
+        fig, axarr = plt.subplots(num_tables,1, figsize=tuple(figsize))
+        fig_name = '{} Block {} Nearest Neighbors of words in {}'.format(self.model_name, self.block_name, cat)
+        if is_titled: plt.title(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # ax
+        for n, neighbors_mat in enumerate(neighbors_mat_list):
+            axarr[n].xaxis.set_visible(False) # hide to show table only
+            axarr[n].yaxis.set_visible(False)
+            axarr[n].axis('off')
+            the_table = axarr[n].table(cellText=neighbors_mat, colLabels=col_labels_list[n], loc='center')
+
+            table_props = the_table.properties()
+            table_cells = table_props['child_artists']
+            for cell in table_cells: cell.set_height(0.1)
+
+        ##########################################################################
+        return fig
+
+
     def make_acts_dh_fig(self, probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
         ##########################################################################
         # make acts_df
@@ -483,7 +566,10 @@ class DataBase:
         probe_simmat = self.calc_probe_sim_mat()
         ##########################################################################
         # calc cat simmat
-        cat_simmat, cat_simmat_labels = self.calc_cat_sim_mat(probe_simmat)
+        cat_simmat = self.calc_cat_sim_mat(probe_simmat)
+
+        cat_simmat_labels = self.cat_list # TODO is this correct?
+
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -523,13 +609,15 @@ class DataBase:
         ##########################################################################
         # heatmap
         max_extent = ax_dendleft.get_ylim()[1]
-        im = ax_heatmap.imshow(z[::-1], aspect='auto', # TODO does cmap have an effect? cmap=plt.cm.jet,
+        im = ax_heatmap.imshow(z[::-1], aspect='auto',
+                               cmap=plt.cm.jet,
                                interpolation='nearest',
                                extent=(0, max_extent, 0, max_extent),
                                vmin=vmin, vmax=vmax)
         # colorbar
         cb = plt.colorbar(im, cax=ax_colorbar, ticks=[vmin, vmax])
         cb.ax.set_xticklabels([vmin, vmax])
+        cb.set_label('Correlation Coefficient', labelpad=-50, fontsize=ax_font_size)
         ##########################################################################
         # set heatmap ticklabels
         xlim = ax_heatmap.get_xlim()[1]

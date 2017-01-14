@@ -58,7 +58,7 @@ RNN architecture. This class contains a ``train`` ing method which is used to tr
 
 
 During training, hidden state activations for user-specified words (probes) are saved into a pandas dataframe and saved
-to disk. An included browser application is used to visualize the data during and after training. In a python shell:
+to disk. An included browser application is used to visualize the data after training. In a python shell:
 
 .. code-block:: pycon
 
@@ -76,6 +76,15 @@ Example of a dimensionality reduction plot produced using the browser applicatio
     :figclass: align-center
 
     SVD and t-SNE algorithms are used to map a trained model's hidden activation state space into 2 dimensions
+
+.. figure:: example3.png
+    :width: 200px
+    :align: center
+    :height: 100px
+    :alt: alternate text
+    :figclass: align-center
+
+    Nearest neighbors for a selection of 5 probes from the category 'fruits'
 
 Customization
 =============

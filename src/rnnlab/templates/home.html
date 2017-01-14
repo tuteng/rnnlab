@@ -50,7 +50,7 @@
             background-color: #FF9B12;
             border: none;
             color: black;
-            padding: 15px 32px;
+            padding: 12px 12px;
             text-align: center;
             display: inline-block;
             cursor : pointer;
@@ -107,10 +107,15 @@
             <h3>Last update: <i>{{log_mtime}}</i></h3>
         </div>
         <div id="btns">
+            <!--need block name only-->
             <button id="dimredBtn" class="button">Plot 2D Acts</button>
-            <button id="dhBtn" class="button">Plot Dh Acts</button>
+            <button id="catsimBtn" class="button">Plot Dh Cat Sim</button>
             <button id="bdBtn" class="button">Plot Ba Breakdown</button>
+            <!--need cats-->
             <button id="clustBtn" class="button">Plot Cat Cluster</button>
+            <button id="neighborsBtn" class="button">Plot Neighbors</button>
+            <!--need probes-->
+            <button id="dhBtn" class="button">Plot Dh Acts</button>
         </div>
     </div>
     <div id="main">
@@ -229,12 +234,39 @@
         </div>
     </div>
 
+    <div id="catsimModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if cat_sim_dh_img %}
+                <img src="data:image/png;base64,{{ cat_sim_dh_img }}">
+            {% else %}
+                <h3 style="color:red">Please select block</h3>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="neighborsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if neighbors_table_img %}
+                <img src="data:image/png;base64,{{ neighbors_table_img }}">
+            {% else %}
+                <h3 style="color:red">Please select category</h3>
+            {% endif %}
+        </div>
+    </div>
 
     <script type='text/javascript'>
         var $dimredModal = $('#dimredModal');
         var $dhModal = $('#dhModal');
         var $bdModal = $('#bdModal');
         var $clustModal = $('#clustModal');
+        var $catsimModal = $('#catsimModal');
+        var $neighborsModal = $('#neighborsModal');
 
         $(document).ready(function() {
             $('#dimredBtn').click(function () {
@@ -249,6 +281,12 @@
             $('#clustBtn').click(function () {
                 $clustModal.css('display', 'block');
             });
+            $('#catsimBtn').click(function () {
+                $catsimModal.css('display', 'block');
+            });
+            $('#neighborsBtn').click(function () {
+                $neighborsModal.css('display', 'block');
+            });
 
 
 
@@ -257,6 +295,8 @@
                 $dhModal.css('display', 'none');
                 $bdModal.css('display', 'none');
                 $clustModal.css('display', 'none');
+                $catsimModal.css('display', 'none');
+                $neighborsModal.css('display', 'none');
             });
 
 

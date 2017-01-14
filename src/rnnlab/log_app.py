@@ -20,8 +20,8 @@ DEFAULTS = {'block_names': ['Select', '0000','0050', '1000', '2000', '2800'],
             'sel_block_name': 'Select',
             'sel_cat': 'Select',
             'sel_probe': 'Select',
-            'headers': ['model_name', 'num_iterations', 'num_hidden_units', 'best_token_ba'],
-            'allow_incomplete' : True}
+            'headers': ['model_name', 'learning_rate', 'num_hidden_units', 'best_token_ba'],
+            'allow_incomplete' : False}
 ##########################################################################
 log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
 ##########################################################################
@@ -47,9 +47,7 @@ def load_database(model_name, block_name):
     runs_dir = os.path.abspath(load_rc('runs_dir'))
     path = os.path.join(runs_dir, model_name, 'Data_Frame')
     file_name = 'df_block_{}.h5'.format(block_name)
-    print
-    print os.path.join(path, file_name)
-    print
+    print 'Path to data: {}'.format(path)
     df = pd.read_hdf(os.path.join(path, file_name), 'df')
     # load configs_dict
     path = os.path.join(runs_dir, model_name, 'Configs')
@@ -99,6 +97,8 @@ def home():
     ba_breakdown_scatter_img = None
     ba_breakdow_img = None
     cat_cluster_img = None
+    cat_sim_dh_img = None
+    neighbors_table_img = None
     probes = [DEFAULTS['sel_probe']]
     ##########################################################################
     # load log entries and any requests
@@ -140,13 +140,29 @@ def home():
             figfile.seek(0)
             acts_2d_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
+            # make cat_sim_dh_img
+            fig = database.make_cat_sim_dh_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            cat_sim_dh_img = base64.b64encode(figfile.getvalue())
+            ##########################################################################
             if sel_cat != DEFAULTS['sel_cat']:
                 ##########################################################################
                 # make probes to select from
                 probes += database.get_probes_from_cat(sel_cat)
                 probes.sort()
                 ##########################################################################
+                # make neighbors_table_img
+                print 'Making neighbors_table_img for: {} {}...'.format(sel_model_name, sel_block_name)
+                fig = database.make_neighbors_table_fig(sel_cat)
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                neighbors_table_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
                 # make cat_cluster_img
+                print 'Making cat_cluster_img for: {} {}...'.format(sel_model_name, sel_block_name)
                 fig = database.make_cat_cluster_fig(sel_cat)
                 figfile = StringIO.StringIO()
                 fig.savefig(figfile, format='png')
@@ -201,7 +217,9 @@ def home():
                            token_corcoeff_hist_img=token_corcoeff_hist_img,
                            ba_breakdown_scatter_img=ba_breakdown_scatter_img,
                            ba_breakdow_img=ba_breakdow_img,
-                           cat_cluster_img=cat_cluster_img)
+                           cat_cluster_img=cat_cluster_img,
+                           cat_sim_dh_img=cat_sim_dh_img,
+                           neighbors_table_img=neighbors_table_img)
 
 
 @app.route('/template/', methods=['GET', 'POST']) # TODO template for fig
@@ -219,8 +237,8 @@ def token_acts_dh_img():
 
 ##########################################################################
 if __name__ == '__main__':
-    app.secret_key = 'A0Zr98j/3yX R~XHH!jmN]LWX/,?RT'
+    app.secret_key = 'A0Zr98j/3yX R~XHH!jmN]LWX/,?RT' # for sessions
     app.run(port=5000, debug=True)
 
 def start():
-    app.run(port=5000, debug=False)
+    app.run(port=5000, debug=True)
