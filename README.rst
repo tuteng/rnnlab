@@ -60,10 +60,12 @@ RNN architecture. This class contains a ``train`` ing method which is used to tr
 During training, hidden state activations for user-specified words (probes) are saved into a pandas dataframe and saved
 to disk. An included web application is used to visualize the data during and after training. In a python shell:
 
-``
-from rnnlab import log_app
-log_app.start()
-``
+.. code-block:: pycon
+
+    >>> from rnnlab import log_app
+    >>> log_app.start()
+    * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
+
 
 Customization
 =============
