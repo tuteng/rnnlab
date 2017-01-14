@@ -81,8 +81,8 @@ Customization
 =============
 
 If you would like to train on a different corpus, create a directory **data** in your working directory, and place a
-folder with the name of the corpus inside it. Inside this folder, put the corpus
-(with documents separated by new lines) as a .txt file titled **corpus.txt**.
+folder with the name of the corpus inside it. Save the corpus as a .txt file (with documents separated by new lines)
+inside the folder you just created and title it **corpus.txt**.
 
 To load a custom list of probes, create
 a folder named **probes** inside the data directory. Then, save a list of probes to a .txt file (each probe separated by a
