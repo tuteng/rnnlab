@@ -43,7 +43,7 @@ RNN architecture. This class contains a ``train`` ing method which is used to tr
    >>> from rnnlab import gen_user_configs
    >>> from rnnlab import RNN
    >>>
-   >>> get_childes_data()
+   >>> get_childes_data() # downloads childes corpus from github
    >>>
    >>> for user_configs in gen_user_configs():
    >>>     myrnn = RNN('lstm', user_configs) # try 'srn', ''irnn', 'scrn'
