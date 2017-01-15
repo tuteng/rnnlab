@@ -64,18 +64,17 @@ class RNN(RNNHelper):
             is_make_df = int(block_name) % self.rnn.save_ev == 0 and block_name in df_blocks
             if is_make_df or int(block_name) in[1, stop_block_int]:
                 ##########################################################################
+                start = time.time()
+                ##########################################################################
                 # save checkpoint
                 self.save_ckpt(block_name)
                 ##########################################################################
                 # make database and save
-                start = time.time()
-                print 'Calculating hidden activations...'
                 df = self.make_df()
                 database = DataBase(self.rnn.configs_dict, df, block_name)
                 database.save_df()
                 ##########################################################################
                 # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
-                print 'Calculating trajectory data...'
                 trajdatabase = TrajDataBase(self.rnn.configs_dict, self.rnn.corpus.num_train_docs)
                 test_pp = self.calc_test_pp()
                 new_entry, test_pp, avg_token_ba = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
@@ -258,7 +257,9 @@ class RNN(RNNHelper):
         print '{} Training Session Closed and Graph reset\n\n'.format(self.rnn.model_name)
 
 
-    def make_df(self, fast=True, decimals=4):
+    def make_df(self, fast=True):
+        ##########################################################################
+        print 'Calculating hidden activations...'
         ##########################################################################
         # inits
         tokens_in_mb = []
@@ -301,12 +302,9 @@ class RNN(RNNHelper):
                             [self.rnn.last_hidden_state, self.rnn.pp_mat],
                             feed_dict={self.rnn.x: probe_X, self.rnn.y: probe_Y})
                         ##########################################################################
-                        # round acts_mat
-                        acts_mat_rounded = np.around(acts_mat, decimals=decimals)
-                        ##########################################################################
                         # add acts_mat and pp_vec to mb_data_dict
                         for n, hidden_unit_label in enumerate(hidden_unit_labels):
-                            mb_data_dict[hidden_unit_label] += acts_mat_rounded.T[n].tolist()
+                            mb_data_dict[hidden_unit_label] += acts_mat.T[n].tolist()
                         mb_data_dict['token_pp'] += pp_vec.tolist() # TODO was previously named 'pp' only
                         ##########################################################################
                         # reset batch
@@ -314,9 +312,6 @@ class RNN(RNNHelper):
                         num_tokens_in_batch = 0
                         probe_X = np.zeros((self.rnn.mb_size, self.rnn.bptt_steps), dtype=int)
                         probe_Y = np.zeros(self.rnn.mb_size, dtype=int)
-        ##########################################################################
-        print 'Rounding activations to {} decimals'.format(decimals)
-        np.set_printoptions(suppress=True)
         ##########################################################################
         # convert mb_data_dict to df
         num_data = len(mb_data_dict['token_pp'])  # discard leftover tokens for which no acts were calculated (because of mb)

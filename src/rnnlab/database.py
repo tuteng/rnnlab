@@ -10,6 +10,7 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
 from rnnhelper import load_rc
+from utilities import calc_probe_sim_mat
 import pandas as pd
 
 pd.set_option('io.hdf.default_format','table')
@@ -40,11 +41,11 @@ class DataBase:
         self.block_name = block_name
         self.token_list, self.token_id_dict, self.probe_list, \
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.load_token_data()
-        self.all_acts_mat, self.all_acts_df = self.make_all_acts_mat()
+        self.all_acts_df = self.make_all_acts_df()
 
 
 
-    def save_df(self, complevel=9): # only df that is instance of database class will be saved
+    def save_df(self, complevel=9):
         ##########################################################################
         path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
         file_name = 'df_block_{}.h5'.format(self.block_name)
@@ -53,18 +54,6 @@ class DataBase:
             store.append('df', self.df, format='table')
         print 'Saved dataframe'
 
-
-    def calc_probe_sim_mat(self):
-        ##########################################################################
-        print 'Calculating simmat...'
-        ##########################################################################
-        # calc sim mat
-        probe_simmat = np.asarray(self.all_acts_df.T.corr(method='pearson'))
-        assert probe_simmat.shape == (len(self.probe_list), len(self.probe_list))
-        nan_ids = np.where(np.isnan(probe_simmat).all(axis=1))[0]
-        assert len(nan_ids) == 0
-        ##########################################################################
-        return probe_simmat
 
 
     def make_cat_probe_list_dict(self):
@@ -79,7 +68,8 @@ class DataBase:
     def get_ba_breakdown_data(self):
         ##########################################################################
         # make df_cat_and_ba
-        df_cat_ba = self.df[['cat', 'token_ba']].drop_duplicates().groupby('cat', sort=False).mean()
+        # df_cat_ba = self.df[['cat', 'token_ba']].drop_duplicates().groupby('cat', sort=False).mean()
+        df_cat_ba = self.df.query("columns in ['cat', 'token_ba']").drop_duplicates().groupby('cat', sort=False).mean()
         ##########################################################################
         # make cats_sorted_by_ba
         tuples = [tuple for tuple in df_cat_ba.itertuples()]
@@ -98,30 +88,31 @@ class DataBase:
         return cats_sorted_by_ba, cat_ba_dict, cat_probe_list_dict, token_ba_row
 
 
-    def make_token_acts_df(self, probe):
+    def make_token_acts_df(self, sel_probe):
         ##########################################################################
-        token_ids = self.df[self.df['probe'] == probe].index.tolist()
+        # token_ids = self.df[self.df['probe'] == sel_probe].index.tolist()
+        sel_probe = sel_probe
+        token_ids = self.df.query("probe == @sel_probe").index.tolist()
         token_acts_df = self.df.loc[token_ids].filter(regex='H')
         ##########################################################################
         return token_acts_df
 
 
-    def make_cat_acts_mat(self, cat, agg_fn='mean'):
+    def make_cat_acts_df(self, sel_cat, agg_fn='mean'):
         ##########################################################################
         print 'Making cat_acts_mat using "{}"...'.format(agg_fn)
         ##########################################################################
-        df_cat = self.df[self.df['cat'] == cat]
+        # df_cat = self.df[self.df['cat'] == sel_cat]
+        sel_cat = sel_cat
+        df_cat = self.df.query("cat == @sel_cat")
         cat_acts_df = df_cat.groupby('probe', sort=True).mean().filter(regex='H')  # TODO make sure this works
         ##########################################################################
-        # make cat_acts_mat
-        cat_acts_mat = np.asarray(cat_acts_df)
-        ##########################################################################
-        return cat_acts_mat, cat_acts_df
+        return cat_acts_df
 
 
-    def make_all_acts_mat(self, agg_fn='mean'):
+    def make_all_acts_df(self, agg_fn='mean', decimals=None):
         ##########################################################################
-        print 'Making all_acts_mat using "{}"...'.format(agg_fn)
+        print 'Making all_acts_df using "{}"...'.format(agg_fn)
         ##########################################################################
         # group by probe (sort has to be True)
         if agg_fn == 'none':
@@ -129,10 +120,10 @@ class DataBase:
         else:
             all_acts_df = self.df.groupby('probe', sort=True).mean().filter(regex='H')
         ##########################################################################
-        # make all_acts_mat
-        all_acts_mat = np.asarray(all_acts_df)
+        # round df ?
+        if decimals is not None: all_acts_df.round(decimals)
         ##########################################################################
-        return all_acts_mat, all_acts_df
+        return all_acts_df
 
 
     def calc_cat_sim_mat(self, probe_simmat):
@@ -347,14 +338,14 @@ class DataBase:
         return fig
 
 
-    def make_acts_dh_fig(self, probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
+    def make_acts_dh_fig(self, sel_probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
         ##########################################################################
         # make acts_df
-        if probe:
-            token_acts_df = self.make_token_acts_df(probe)
+        if sel_probe:
+            token_acts_df = self.make_token_acts_df(sel_probe)
             acts_mat = np.asarray(token_acts_df)
         else:
-            acts_mat, acts_df = self.all_acts_mat, self.all_acts_df
+            acts_mat = self.all_acts_df.values
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -366,8 +357,8 @@ class DataBase:
         ##########################################################################
         # fig
         fig, ax_heatmap = plt.subplots(figsize=figsize)
-        if probe:
-            fig_name = '{} Block {} DH of acts for "{}" '.format(self.model_name, self.block_name, probe)
+        if sel_probe:
+            fig_name = '{} Block {} DH of acts for "{}" '.format(self.model_name, self.block_name, sel_probe)
         else:
             fig_name = '{} Block {} DH of acts for all probes '.format(self.model_name, self.block_name)
         if is_titled: plt.title(fig_name, fontsize=title_font_size, y=1.2)
@@ -376,8 +367,8 @@ class DataBase:
         ax_heatmap.yaxis.tick_right()
         ax_heatmap.set_xlabel('Hidden Units', fontsize=ax_font_size)
         num_acts = len(acts_mat)
-        if probe:
-            ax_heatmap.set_ylabel('{} Examples of "{}"'.format(num_acts, probe), fontsize=ax_font_size)
+        if sel_probe:
+            ax_heatmap.set_ylabel('{} Examples of "{}"'.format(num_acts, sel_probe), fontsize=ax_font_size)
         else:
             ax_heatmap.set_ylabel('All {}  probes'.format(num_acts), fontsize=ax_font_size)
         divider = make_axes_locatable(ax_heatmap)
@@ -457,13 +448,11 @@ class DataBase:
     def make_cat_sim_dh_fig(self, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
         ##########################################################################
         # calc probe simmat
-        probe_simmat = self.calc_probe_sim_mat()
+        probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
         ##########################################################################
         # calc cat simmat
         cat_simmat = self.calc_cat_sim_mat(probe_simmat)
-
         cat_simmat_labels = self.cat_list # TODO is this correct?
-
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -559,11 +548,11 @@ class DataBase:
         if is_titled: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # get cat_acts_mat
-        cat_acts_mat, cat_acts_df = self.make_cat_acts_mat(cat)
+        cat_acts_df = self.make_cat_acts_df(cat)
         probes_in_cat = cat_acts_df.index.tolist()
         ##########################################################################
         # dendrogram
-        dist_matrix = pdist(cat_acts_mat, 'euclidean')
+        dist_matrix = pdist(cat_acts_df.values, 'euclidean')
         linkages = linkage(dist_matrix, method='complete')
         dendrogram(linkages,
                    leaf_label_func=lambda x: probes_in_cat[x],

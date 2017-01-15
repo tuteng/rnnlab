@@ -1,6 +1,18 @@
 import numpy as np
 
 
+def calc_probe_sim_mat(all_acts_df, probe_list):
+    ##########################################################################
+    print 'Calculating probe simmat...'
+    ##########################################################################
+    # calc sim mat
+    probe_simmat = np.asarray(all_acts_df.T.corr(method='pearson'))
+    assert probe_simmat.shape == (len(probe_list), len(probe_list))
+    nan_ids = np.where(np.isnan(probe_simmat).all(axis=1))[0]
+    assert len(nan_ids) == 0
+    ##########################################################################
+    return probe_simmat
+
 
 def calc_ba_mats(probe_list, cat_list, probe_cat_dict, probe_simmat, thr_list, output, verbose=False):
     ##########################################################################

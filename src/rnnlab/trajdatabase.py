@@ -5,6 +5,7 @@ import multiprocessing as mp
 import matplotlib.pyplot as plt
 from utilities import calc_ba_mats
 from rnnhelper import load_rc
+from utilities import calc_probe_sim_mat
 import pandas as pd
 
 pd.set_option('io.hdf.default_format','table')
@@ -38,10 +39,12 @@ class TrajDataBase:
         # open trajstore
         print 'Opening trajectory store with complevel {}'.format(complevel)
         self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc')
-        self.trajstore.create_table_index('block_names', columns=['block_name'])  # TODO index?
+        # self.trajstore.create_table_index('block_names', columns=['block_name'])  # TODO this is slowing down writing
 
 
     def calc_new_entry(self, df, all_acts_df, test_pp, block_name, use_classifier=False):
+        ##########################################################################
+        print 'Making new entry to trajstore...'
         ##########################################################################
         # init df with index
         new_entry = pd.DataFrame(index=[block_name]) # table is empty without index
@@ -72,18 +75,20 @@ class TrajDataBase:
     def append_entry(self, new_entry):
         ##########################################################################
         # append to trajstore
-        self.trajstore.append('trajdf', new_entry,
-                     format='table',
-                     data_columns=True,  # alllows fast querying, automatically indexed
-                     expected_rows=self.num_train_blocks, # should make read faster
-                     index=False) #TODO debugging
+        self.trajstore.append('trajdf', new_entry)
+                     # data_columns=False,  # TODO True takes too long?
+                     # expected_rows=self.num_train_blocks, # should make read faster
+                     # index=False) #TODO debugging
         ##########################################################################
-        print 'Saved trajdf:', new_entry.info
+        print 'Saved new entry to trajstore'
         print 'In store:'
         print self.trajstore
+        ##########################################################################
+        # close strajstore
+        self.trajstore.close()
 
 
-    def get_test_pp(self, block_name): # TODO what if i don't read from store during training?
+    def get_test_pp(self, block_name):
         ##########################################################################
         # get test_pp
         block_name = block_name
@@ -134,7 +139,7 @@ class TrajDataBase:
     def calc_token_ba_list(self, all_acts_df): # uses multiprocessing
         ##########################################################################
         # calc simmat
-        probe_simmat = self.calc_probe_sim_mat(all_acts_df)
+        probe_simmat = calc_probe_sim_mat(all_acts_df, self.probe_list)
         ##########################################################################
         # make thr_ranges
         num_cpus, thr_start, thr_end, thr_step = 6, 0.7, 1.0, 0.01  # TODO how flexible is this?
@@ -154,9 +159,12 @@ class TrajDataBase:
         else:
             print 'Calculating token ba using {} processes...'.format(num_cpus)
         pool = mp.Pool(processes=num_cpus)
-        async_results = [pool.apply_async(
-            calc_ba_mats, args=(self.probe_list, self.cat_list, self.probe_cat_dict, probe_simmat, thr_list, 'token'))
-                         for thr_list in thr_lists]
+        async_results = [pool.apply_async(calc_ba_mats, args=(self.probe_list,
+                                                              self.cat_list,
+                                                              self.probe_cat_dict,
+                                                              probe_simmat,
+                                                              thr_list,
+                                                              'token')) for thr_list in thr_lists]
         results = [result.get() for result in async_results]
         token_ba_mat = np.hstack((mat for mat in results))
         pool.close()
@@ -167,16 +175,6 @@ class TrajDataBase:
         token_ba_list = np.multiply(token_ba_mat[:, best_token_ba_mat_col_id], 100).tolist()
         ##########################################################################
         return token_ba_list
-
-
-    def calc_probe_sim_mat(self, acts_df):
-        ##########################################################################
-        print 'Calculating probe_simmat...'
-        ##########################################################################
-        # calc sim mat
-        probe_simmat = acts_df.T.corr(method='pearson').values
-        ##########################################################################
-        return probe_simmat
 
 
     def load_token_data(self):
@@ -194,20 +192,14 @@ class TrajDataBase:
 
 
 
-    def make_token_ba_traj_mat(self, sel_probes): # TODO this needs to be rewritten a lot to reflect database change
+    def make_token_ba_traj_mat(self, sel_probes):
         ##########################################################################
         # query all dfs stored in model's dir
         start = time.time()
         path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
-        token_ba_col_list = []
-        for file_name in sorted(os.listdir(path), reverse=False):
-            print 'Loading ', os.path.join(path, file_name)
-            with pd.HDFStore(os.path.join(path, file_name), mode='r') as store:
-                sel_probes = sel_probes # probes_list is used in query
-                probe_rows_df = store.select('trajdf', where="probe in sel_probes & columns == ['probe', 'token_ba']")
-            token_ba_col = probe_rows_df.drop_duplicates()['token_ba'].values
-            token_ba_col_list.append(token_ba_col)
-        token_ba_traj_mat = np.vstack(tuple(token_ba_col_list)).transpose()
+        sel_probes = sel_probes # probes_list is used in query
+        token_ba_traj_df = self.trajstore.select('trajdf', where="columns in sel_probes")
+        token_ba_traj_mat = token_ba_traj_df.values
         print token_ba_traj_mat.shape
         print 'time:', abs(time.time() - start)
         ##########################################################################
@@ -228,7 +220,7 @@ class TrajDataBase:
 
 
 
-    def make_token_ba_trajectories_fig(self, sel_probes, cat, is_title=False): # plot token_ba trajectories for all probes in cat
+    def make_token_ba_trajectories_fig(self, sel_probes, cat, is_title=False): # for probes in cat
         ##########################################################################
         # fig settings
         figsize = (12, 8)
