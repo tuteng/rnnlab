@@ -5,7 +5,7 @@ import math, time, os, socket
 
 
 ####################################################################################################
-def calc_hca(model_name, block_str, x_data, y_data, hc_epochs):
+def calc_hca(model_name, x_data, y_data, hc_epochs):
     ####################################################################################################
     # datasets params
     VALIDATION_PERC_OF_TOTAL = 10
@@ -24,7 +24,7 @@ def calc_hca(model_name, block_str, x_data, y_data, hc_epochs):
     # make run_name for tensorboard
     run_num = 1
     while True:
-        run_name = '{}_block_run_{}'.format(model_name, block_str, run_num)
+        run_name = '{}_block_run_{}'.format(model_name, run_num)
         if os.path.isdir(os.path.join(runs_dir, model_name, 'Classifier', run_name)):
             run_num += 1
         else:

@@ -38,14 +38,13 @@ class Corpus(object):
         path = os.path.join(self.data_dir, self.corpus_name)
         file_name = 'corpus.txt'
         corpus_content = []
-
-        print os.getcwd()
-        print
+        print 'Loading corpus from {}'.format(path)
         with open(os.path.join(path, file_name),'r') as f:
             for doc in f.readlines():
                 corpus_content.append(doc.strip().strip('\n'))
         ##########################################################################
         return corpus_content
+
 
     def split_corpus(self, min=70, save_ev=10): #TODO get save_ev from config
         ##########################################################################
@@ -72,6 +71,7 @@ class Corpus(object):
         ##########################################################################
         return test_doc_ids, train_doc_ids
 
+
     def gen_train_block_name_and_id(self, epochs, shuffle=False): # TODO make sure shuffling works
         ##########################################################################
         max_num_train_blocks = self.num_train_docs * epochs
@@ -82,9 +82,11 @@ class Corpus(object):
             block_name = self.to_block_name(n+1) # +1 assures names start at 1
             yield (block_name, block_id)
 
+
     def to_block_name(self, block):
         ##########################################################################
         return ('0000' + str(block))[-4:]
+
 
     def gen_batch(self, mb_size, bptt_steps, doc_id):
         ##########################################################################
@@ -116,6 +118,7 @@ class Corpus(object):
             y = x[:, -1]
             x_shortened = x[:, :-1]
             yield (x_shortened, y)
+
 
     def make_token_data(self):
         ##########################################################################

@@ -5,6 +5,7 @@ import tensorflow as tf
 from itertools import groupby
 from operator import itemgetter
 from database import DataBase
+from trajdatabase import TrajDataBase
 from rnnhelper import RNNHelper
 
 
@@ -66,28 +67,29 @@ class RNN(RNNHelper):
                 # save checkpoint
                 self.save_ckpt(block_name)
                 ##########################################################################
-                # make database
+                # make database and save
                 start = time.time()
-                print 'Making pandas dataframe...'
-                df = self.make_df()  # includes test_pp
+                print 'Calculating hidden activations...'
+                df = self.make_df()
                 database = DataBase(self.rnn.configs_dict, df, block_name)
+                database.save_df()
                 ##########################################################################
-                # expand df
-                col_names = ['token_ba']
-                database.expand_df(col_names)
+                # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
+                print 'Calculating trajectory data...'
+                trajdatabase = TrajDataBase(self.rnn.configs_dict, self.rnn.corpus.num_train_docs)
+                test_pp = self.calc_test_pp()
+                new_entry, test_pp, avg_token_ba = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
+                trajdatabase.append_entry(new_entry)
                 #########################################################################
-                # update log with best_avg_token_ba and completed
-                token_ba_col = np.asarray(database.df.groupby('probe', sort=True).mean()['token_ba'])
-                test_pp, avg_token_ba = df['test_pp'][0], np.mean(token_ba_col)
+                # print to console
                 print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(
                     test_pp, avg_token_ba, int(abs(time.time() - start)))
-                avg_token_ba_list.append(np.mean(database.df['token_ba']))
+                avg_token_ba_list.append(avg_token_ba)
+                #########################################################################
+                # update log with best_avg_token_ba and completed
                 best_avg_token_ba = np.max(np.asarray(avg_token_ba_list))
                 completed = True if stop_block_name == block_name else False
                 self.update_log(best_avg_token_ba, completed)
-                #########################################################################
-                # save df to disk
-                database.save_df()
         ##########################################################################
         # at end of training, close session and upload data
         self.complete_training()
@@ -226,18 +228,6 @@ class RNN(RNNHelper):
                 writer.writerow(row)
 
 
-    def calc_test_pp(self):
-        ##########################################################################
-        test_pp_sum, num_batches, test_pp = 0, 0, 0
-        for (X, Y) in self.rnn.corpus.gen_batch(self.rnn.mb_size, self.rnn.bptt_steps, 'test'):
-            test_pp_batch = self.rnn.sess.run(self.rnn.mean_pp, feed_dict={self.rnn.x: X, self.rnn.y: Y})
-            test_pp_sum += test_pp_batch
-            num_batches += 1
-        test_pp = int(test_pp_sum / num_batches)
-        ##########################################################################
-        return test_pp
-
-
     def print_train_stats(self, elapsed_start, block_name, block_id, num_mbs_trained):
         ##########################################################################
         secs = int(abs(elapsed_start - time.time()))
@@ -268,12 +258,12 @@ class RNN(RNNHelper):
         print '{} Training Session Closed and Graph reset\n\n'.format(self.rnn.model_name)
 
 
-    def make_df(self, fast=True):
+    def make_df(self, fast=True, decimals=4):
         ##########################################################################
         # inits
         tokens_in_mb = []
         hidden_unit_labels = ['H{}'.format(i) for i in range(self.rnn.num_hidden_units)]
-        df_column_labels = ['doc_name', 'probe', 'probe_id', 'Y', 'cat', 'pp'] + hidden_unit_labels
+        df_column_labels = ['doc_name', 'probe', 'probe_id', 'Y', 'cat', 'token_pp'] + hidden_unit_labels
         mb_data_dict_keys = ['X'] + df_column_labels
         mb_data_dict = {key: [] for key in mb_data_dict_keys}
         df = pd.DataFrame(columns=df_column_labels)
@@ -311,10 +301,13 @@ class RNN(RNNHelper):
                             [self.rnn.last_hidden_state, self.rnn.pp_mat],
                             feed_dict={self.rnn.x: probe_X, self.rnn.y: probe_Y})
                         ##########################################################################
+                        # round acts_mat
+                        acts_mat_rounded = np.around(acts_mat, decimals=decimals)
+                        ##########################################################################
                         # add acts_mat and pp_vec to mb_data_dict
                         for n, hidden_unit_label in enumerate(hidden_unit_labels):
-                            mb_data_dict[hidden_unit_label] += acts_mat.T[n].tolist()
-                        mb_data_dict['pp'] += pp_vec.tolist()
+                            mb_data_dict[hidden_unit_label] += acts_mat_rounded.T[n].tolist()
+                        mb_data_dict['token_pp'] += pp_vec.tolist() # TODO was previously named 'pp' only
                         ##########################################################################
                         # reset batch
                         tokens_in_mb = []
@@ -322,12 +315,27 @@ class RNN(RNNHelper):
                         probe_X = np.zeros((self.rnn.mb_size, self.rnn.bptt_steps), dtype=int)
                         probe_Y = np.zeros(self.rnn.mb_size, dtype=int)
         ##########################################################################
+        print 'Rounding activations to {} decimals'.format(decimals)
+        np.set_printoptions(suppress=True)
+        ##########################################################################
         # convert mb_data_dict to df
-        num_data = len(mb_data_dict['pp'])  # discard leftover tokens for which no acts were calculated (because of mb)
+        num_data = len(mb_data_dict['token_pp'])  # discard leftover tokens for which no acts were calculated (because of mb)
         for df_column_label in df_column_labels:
             df[df_column_label] = mb_data_dict[df_column_label][:num_data]
         ##########################################################################
-        # add test_pp
-        df['test_pp'] = [self.calc_test_pp()] * num_data
-        ##########################################################################
         return df
+
+
+
+    def calc_test_pp(self):
+        ##########################################################################
+        print 'Calculating test perplexity...'
+        ##########################################################################
+        test_pp_sum, num_batches, test_pp = 0, 0, 0
+        for (X, Y) in self.rnn.corpus.gen_batch(self.rnn.mb_size, self.rnn.bptt_steps, 'test'):
+            test_pp_batch = self.rnn.sess.run(self.rnn.mean_pp, feed_dict={self.rnn.x: X, self.rnn.y: Y})
+            test_pp_sum += test_pp_batch
+            num_batches += 1
+        test_pp = int(test_pp_sum / num_batches)
+        ##########################################################################
+        return test_pp

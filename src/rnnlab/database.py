@@ -10,7 +10,9 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
 from rnnhelper import load_rc
+import pandas as pd
 
+pd.set_option('io.hdf.default_format','table')
 
 class DataBase:
     """
@@ -33,88 +35,23 @@ class DataBase:
         ##########################################################################
         # assign instance variables
         self.configs_dict = configs_dict
-        self.probes_name = configs_dict['probes_name']
         self.model_name = configs_dict['model_name']
         self.df = df
         self.block_name = block_name
-        self.acts_mat, self.acts_df = self.make_all_acts_mat()
         self.token_list, self.token_id_dict, self.probe_list, \
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.load_token_data()
+        self.all_acts_mat, self.all_acts_df = self.make_all_acts_mat()
 
 
-    def save_df(self): # only df that is instance of database class will be saved
+
+    def save_df(self, complevel=9): # only df that is instance of database class will be saved
         ##########################################################################
         path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
         file_name = 'df_block_{}.h5'.format(self.block_name)
-        self.df.to_hdf(os.path.join(path, file_name), 'df')
-        print 'Saved df'
-
-
-    def calc_hca_df_col(self, epochs=30):
-        ########################################################################################
-        print 'Calculating classifier accuracy...'
-        from classifier import calc_hca
-        x_data = np.asarray(self.df.filter(regex='H'))
-        df_cat_col = list(self.df['cat'])
-        assert len(x_data) == len(df_cat_col)
-        y_data = np.zeros(len(df_cat_col))
-        for n, cat in enumerate(df_cat_col):
-            y_data[n] = self.cat_list.index(cat)
-        train_hca, test_hca = calc_hca(self.model_name, self.block_name, x_data, y_data, epochs)
-        train_hca_df_col, test_hca_df_col = [train_hca] * self.df.shape[0], [test_hca] * self.df.shape[0]
-        ########################################################################################
-        return train_hca_df_col, test_hca_df_col
-
-
-    def calc_token_ba_df_col(self): # uses multiprocessing
-        ##########################################################################
-        # calc simmat
-        probe_simmat = self.calc_probe_sim_mat()
-        ##########################################################################
-        # make thr_ranges
-        num_cpus, thr_start, thr_end, thr_step = 6, 0.7, 1.0, 0.01  # TODO how flexible is this?
-        thr_num_steps = round(((thr_end - thr_start) / thr_step) / num_cpus, 2)
-        thr_lists = []
-        while True:
-            thr_list = np.arange(thr_start, thr_start + thr_num_steps * thr_step, thr_step)
-            thr_lists.append(thr_list)
-            thr_start = float(thr_list[-1])
-            time.sleep(0.5)
-            if round(thr_end, 2) == round(thr_start, 2):  # TODO why do i have to round here?
-                break
-        ##########################################################################
-        # calc ba
-        if mp.cpu_count() < num_cpus: sys.exit(
-            'rnnlab: CPU Count is < 6. Parallel calculation of token_ba may not work')
-        else:
-            print 'Calculating token ba using {} processes...'.format(num_cpus)
-        pool = mp.Pool(processes=num_cpus)
-        async_results = [pool.apply_async(calc_ba_mats, args=(self, probe_simmat, thr_list, 'token')) for thr_list in thr_lists]
-        results = [result.get() for result in async_results]
-        token_ba_mat = np.hstack((mat for mat in results))
-        pool.close()
-        ##########################################################################
-        # token_ba_mat = self.calc_ba_mats(probe_simmat, num_thrs, thrs, 'token')
-        token_ba_mat_col_means = np.nanmean(token_ba_mat, 0) * 100
-        best_token_ba_mat_col_id = np.argmax(token_ba_mat_col_means)
-        best_token_ba_mat_col = token_ba_mat[:, best_token_ba_mat_col_id] * 100
-        token_ba_df_col = [best_token_ba_mat_col[self.probe_list.index(probe)] for probe in self.df['probe']]
-        ##########################################################################
-        return token_ba_df_col
-
-
-    def expand_df(self, col_names):
-        ##########################################################################
-        if 'token_ba' in col_names:
-            token_ba_df_col = self.calc_token_ba_df_col()
-            self.df['token_ba'] = token_ba_df_col
-        ##########################################################################
-        if 'hca' in col_names:
-            train_hca_df_col, test_hca_df_col = self.calc_hca_df_col()
-            self.df['train_hca'] = train_hca_df_col
-            self.df['test_hca'] = test_hca_df_col
-        ##########################################################################
-        return self.df
+        print 'Compressing df with complevel {}'.format(complevel)
+        with pd.HDFStore(os.path.join(path, file_name),complevel=complevel,complib='blosc',mode='w') as store:
+            store.append('df', self.df, format='table')
+        print 'Saved dataframe'
 
 
     def calc_probe_sim_mat(self):
@@ -122,19 +59,13 @@ class DataBase:
         print 'Calculating simmat...'
         ##########################################################################
         # calc sim mat
-        probe_simmat = np.asarray(self.acts_df.T.corr(method='pearson'))
-        ##########################################################################
-        # save simmat
-        path = os.path.join(self.runs_dir, self.model_name, 'Sim_Mat')
-        file_name = '{}_simmat_block_{}.npz'.format(self.probes_name, self.block_name)
-        np.savez(os.path.join(path, file_name),
-                 sim_mat=probe_simmat,
-                 probe_list=self.probe_list)
+        probe_simmat = np.asarray(self.all_acts_df.T.corr(method='pearson'))
         assert probe_simmat.shape == (len(self.probe_list), len(self.probe_list))
         nan_ids = np.where(np.isnan(probe_simmat).all(axis=1))[0]
         assert len(nan_ids) == 0
         ##########################################################################
         return probe_simmat
+
 
     def make_cat_probe_list_dict(self):
         ##########################################################################
@@ -204,31 +135,6 @@ class DataBase:
         return all_acts_mat, all_acts_df
 
 
-    def calculate_dprime(self, hits, misses, fas, crs):
-        ##########################################################################
-        from scipy.stats import norm
-        from math import exp, sqrt
-        Z = norm.ppf
-        # Floors an ceilings are replaced by half hits and half FA's
-        halfHit = 0.5 / (hits + misses)
-        halfFa = 0.5 / (fas + crs)
-        # Calculate hitrate and avoid d' infinity
-        hitRate = hits / (hits + misses)
-        if hitRate == 1: hitRate = 1 - halfHit
-        if hitRate == 0: hitRate = halfHit
-        # Calculate false alarm rate and avoid d' infinity
-        faRate = fas / (fas + crs)
-        if faRate == 1: faRate = 1 - halfFa
-        if faRate == 0: faRate = halfFa
-        # Return d', beta, c and Ad'
-        d_prime = Z(hitRate) - Z(faRate)
-        beta = exp(Z(faRate) ** 2 - Z(hitRate) ** 2) / 2
-        c = -(Z(hitRate) + Z(faRate)) / 2
-        ad = norm.cdf(d_prime / sqrt(2))
-        ##########################################################################
-        return d_prime, beta, c, ad
-
-
     def calc_cat_sim_mat(self, probe_simmat):
         ##########################################################################
         # inits
@@ -278,11 +184,11 @@ class DataBase:
     def make_acts_2d_fig(self, label_probe=False, is_titled=False):
         ##########################################################################
         # svd
-        u, s, v = linalg.svd(self.acts_mat)  # row_singular_vectors, singular_values, column_singular_vectors
+        u, s, v = linalg.svd(self.all_acts_mat)  # row_singular_vectors, singular_values, column_singular_vectors
         acts_2d_svd = u[:, :2]  # TODO make sure this is right
         ##########################################################################
         # tsne
-        acts_2d_tsne = TSNE().fit_transform(self.acts_mat)
+        acts_2d_tsne = TSNE().fit_transform(self.all_acts_mat)
         ##########################################################################
         # get cat for each probe for plotting
         acts_cats = [self.probe_cat_dict[probe] for probe in self.probe_list]
@@ -326,7 +232,7 @@ class DataBase:
     def get_probes_from_cat(self, cat):
         ##########################################################################
         cat_ids =  self.df[self.df['cat'] == cat].index.tolist()
-        probes = self.df.loc[cat_ids]['probe'].unique().tolist()
+        probes = self.df.loc[cat_ids]['probe'].astype(str).unique().tolist()
         ##########################################################################
         return probes
 
@@ -362,18 +268,6 @@ class DataBase:
         ax.spines['top'].set_visible(False)
         ##########################################################################
         return fig
-
-
-    def make_pp_curve_fig(self, smoothing_span=20): # TODO this doesn't make sense to be in database because it doesn't have access to all dfs
-        ##########################################################################
-        # pp_curve = ?
-        if smoothing_span > 1:
-            from pandas.stats.moments import ewma
-            pp_curve = ewma(np.asarray(pp_curve), span=smoothing_span)
-        else:
-            pp_curve = pp_curve
-        ##########################################################################
-        # TODO finish this
 
 
     def gen_neighbor_name_and_sim(self, probe, probe_simmat):
@@ -460,7 +354,7 @@ class DataBase:
             token_acts_df = self.make_token_acts_df(probe)
             acts_mat = np.asarray(token_acts_df)
         else:
-            acts_mat = self.acts_mat
+            acts_mat, acts_df = self.all_acts_mat, self.all_acts_df
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -777,145 +671,3 @@ class DataBase:
         return fig
 
     
-def calc_ba_mats(database, probe_simmat, thr_list, output, verbose=False): # output  is either 'token' or 'cat'
-    ##########################################################################
-    ba_mat = None
-    num_probes = len(database.probe_list)
-    num_cats = len(database.cat_list)
-    num_thrs = len(thr_list)
-    ##########################################################################
-    # print header for analysis
-    if verbose:
-        print 'Calculating ba with thresholds {} to {}...'.format(thr_list[0], thr_list[-1])
-        print '{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}'.format(
-            'Threshold', 'Hits', 'Misses', 'HitRate', 'CR', 'FA', 'CRRate', 'BA', 'dprime', 'c')
-    ##########################################################################
-    # initialisations
-    category_hits = np.zeros([num_cats, num_thrs], float)
-    category_misses = np.zeros([num_cats, num_thrs], float)
-    category_false_alarms = np.zeros([num_cats, num_thrs], float)
-    category_correct_rejections = np.zeros([num_cats, num_thrs], float)
-    item_hits = np.zeros([num_probes, num_thrs], float)
-    item_misses = np.zeros([num_probes, num_thrs], float)
-    item_false_alarms = np.zeros([num_probes, num_thrs], float)
-    item_correct_rejections = np.zeros([num_probes, num_thrs], float)
-    cat_ba_mat = np.zeros([num_cats, num_thrs], float)
-    token_ba_mat = np.zeros([num_probes, num_thrs], float)
-    ##########################################################################
-    for n, thr in enumerate(thr_list):
-        ##########################################################################
-        # calc hits, misses, false alarms, correct rejections
-        for token_id_1 in range(num_probes):
-            token_1 = database.probe_list[token_id_1]
-            cat_1 = database.probe_cat_dict[token_1]
-            cat_id_1 = database.cat_list.index(cat_1)
-
-            for token_id_2 in range(num_probes):
-                if token_id_1 != token_id_2:
-                    token_2 = database.probe_list[token_id_2]
-                    cat_2 = database.probe_cat_dict[token_2]
-                    sim = probe_simmat[token_id_1, token_id_2]
-
-                    if sim != 'nan':
-                        if cat_1 == cat_2:
-                            if sim > thr:
-                                category_hits[cat_id_1, n] += 1
-                                item_hits[token_id_1, n] += 1
-                            else:
-                                category_misses[cat_id_1, n] += 1
-                                item_misses[token_id_1, n] += 1
-                        else:
-                            if sim > thr:
-                                category_false_alarms[cat_id_1, n] += 1
-                                item_false_alarms[token_id_1, n] += 1
-                            else:
-                                category_correct_rejections[cat_id_1, n] += 1
-                                item_correct_rejections[token_id_1, n] += 1
-        ##########################################################################
-        # calc category balanced accuracy
-        if output == 'cat':
-            for cat_id in range(num_cats):
-
-                current_hits = category_hits[cat_id, n]
-                current_misses = category_misses[cat_id, n]
-                current_false_alarms = category_false_alarms[cat_id, n]
-                current_correct_rejections = category_correct_rejections[cat_id, n]
-
-                if (current_hits + current_misses) > 0:
-                    sensitivity = current_hits / (
-                        current_hits + current_misses)  # perc correct when correct answer answer was "same"
-                else:
-                    sensitivity = 'nan'
-                if (current_correct_rejections + current_false_alarms) > 0:
-                    specificity = current_correct_rejections / (
-                        current_correct_rejections + current_false_alarms)  # perc correct when correct answer was "different"
-                else:
-                    specificity = 'nan'
-                if (sensitivity != 'nan') and (specificity != 'nan'):
-                    current_balanced_accuracy = (float(sensitivity) + float(specificity)) / 2.0
-                else:
-                    current_balanced_accuracy = 'nan'
-
-                cat_ba_mat[cat_id, n] = current_balanced_accuracy
-                ba_mat = cat_ba_mat
-        ##########################################################################
-        # calc token balanced accuracy
-        elif output == 'token':
-            for token_id in range(num_probes):
-
-                current_hits = item_hits[token_id, n]
-                current_misses = item_misses[token_id, n]
-                current_false_alarms = item_false_alarms[token_id, n]
-                current_correct_rejections = item_correct_rejections[token_id, n]
-
-                if (current_hits + current_misses) > 0:
-                    sensitivity = current_hits / (
-                        current_hits + current_misses)  # perc correct when correct answer answer was "same"
-                else:
-                    sensitivity = 'nan'
-                if (current_correct_rejections + current_false_alarms) > 0:
-                    specificity = current_correct_rejections / (
-                        current_correct_rejections + current_false_alarms)  # perc correct when correct answer was "different"
-                else:
-                    specificity = 'nan'
-                if (sensitivity != 'nan') and (specificity != 'nan'):
-                    current_item_BA = (float(sensitivity) + float(specificity)) / 2.0
-                else:
-                    current_item_BA = 'nan'
-
-                token_ba_mat[token_id, n] = current_item_BA
-                ba_mat = token_ba_mat
-        ##########################################################################
-        # print signal detection scores
-        if verbose:
-            current_hit_sums = category_hits[:, n].sum()
-            current_miss_sums = category_misses[:, n].sum()
-            current_hit_rate = current_hit_sums / (current_hit_sums + current_miss_sums)
-            current_correct_rejection_sums = category_correct_rejections[:, n].sum()
-            current_false_alarm_sums = category_false_alarms[:, n].sum()
-            current_cr_rate = current_correct_rejection_sums / (
-                current_correct_rejection_sums + current_false_alarm_sums)
-            d_prime, beta, c, ad = database.calculate_dprime(
-                current_hit_sums, current_miss_sums, current_false_alarm_sums, current_correct_rejection_sums)
-            current_threshold_BA_mean = np.nanmean(cat_ba_mat[:, n])
-            print '{:>10.4}{:>10}{:>10}{:>10.4}{:>10}{:>10}{:>10.4}{:>10.4}{:>10.2}{:>10.4}' \
-                .format(thr,
-                        current_hit_sums,
-                        current_miss_sums,
-                        current_hit_rate * 100,
-                        current_correct_rejection_sums,
-                        current_false_alarm_sums,
-                        current_cr_rate * 100,
-                        current_threshold_BA_mean * 100,
-                        d_prime,
-                        c)
-    ##########################################################################
-    # save
-    path = os.path.join(database.runs_dir, database.model_name, 'Balanced_Accuracy')
-    file_name = '{}_ba_block_{}.npz'.format(database.probes_name, database.block_name)
-    np.savez(os.path.join(path, file_name),
-             output=output,
-             ba_mat=ba_mat,
-             num_thrs=num_thrs)
-    ##########################################################################
-    return ba_mat

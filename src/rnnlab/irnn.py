@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 from rnnhelper import load_rc
+import numpy as np # irnn specific
 
 class IRNN(object):
     '''

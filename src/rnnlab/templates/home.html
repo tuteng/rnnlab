@@ -108,14 +108,15 @@
         </div>
         <div id="btns">
             <!--need block name only-->
-            <button id="dimredBtn" class="button">Plot 2D Acts</button>
-            <button id="catsimBtn" class="button">Plot Dh Cat Sim</button>
-            <button id="bdBtn" class="button">Plot Ba Breakdown</button>
+            <button id="dimredBtn" class="button">2D Acts</button>
+            <button id="catsimBtn" class="button">Dh CatSim</button>
+            <button id="bdBtn" class="button">Ba Breakdown</button>
             <!--need cats-->
-            <button id="clustBtn" class="button">Plot Cat Cluster</button>
-            <button id="neighborsBtn" class="button">Plot Neighbors</button>
+            <button id="clustBtn" class="button">Cat Cluster</button>
+            <button id="neighborsBtn" class="button">Cat Neighbors</button>
+            <button id="batrajBtn" class="button">Cat Ba Trajs</button>
             <!--need probes-->
-            <button id="dhBtn" class="button">Plot Dh Acts</button>
+            <button id="dhBtn" class="button">Probe Dh Acts</button>
         </div>
     </div>
     <div id="main">
@@ -260,6 +261,21 @@
         </div>
     </div>
 
+    <div id="batrajModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if token_ba_trajectories_img %}
+                <img src="data:image/png;base64,{{ token_ba_trajectories_img }}">
+            {% else %}
+                <h3 style="color:red">Please select category</h3>
+            {% endif %}
+        </div>
+    </div>
+
+
+
     <script type='text/javascript'>
         var $dimredModal = $('#dimredModal');
         var $dhModal = $('#dhModal');
@@ -267,6 +283,7 @@
         var $clustModal = $('#clustModal');
         var $catsimModal = $('#catsimModal');
         var $neighborsModal = $('#neighborsModal');
+        var $batrajModal = $('#batrajModal');
 
         $(document).ready(function() {
             $('#dimredBtn').click(function () {
@@ -287,6 +304,9 @@
             $('#neighborsBtn').click(function () {
                 $neighborsModal.css('display', 'block');
             });
+            $('#batrajBtn').click(function () {
+                $batrajModal.css('display', 'block');
+            });
 
 
 
@@ -297,6 +317,7 @@
                 $clustModal.css('display', 'none');
                 $catsimModal.css('display', 'none');
                 $neighborsModal.css('display', 'none');
+                $batrajModal.css('display', 'none');
             });
 
 
