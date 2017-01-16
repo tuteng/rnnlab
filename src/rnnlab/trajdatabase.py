@@ -312,12 +312,12 @@ class TrajDataBase:
 
     def make_avg_token_ba_traj_fig(self, is_title=False):
         ##########################################################################
+        # load test_pp from trajstore
+        avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
+        ##########################################################################
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
         sns.set_style('white')
-        ##########################################################################
-        # load test_pp from trajstore
-        avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
         ##########################################################################
         # fig settings
         figsize = (12, 4)
@@ -340,8 +340,55 @@ class TrajDataBase:
         ax.tick_params(axis='both', which='both', top='off', right='off')
         ##########################################################################
         # plot
-        ax.plot(range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev), avg_token_ba_traj,
-                '-', linewidth=linewidth)
+        x = range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev)
+        ax.plot(x, avg_token_ba_traj, '-', linewidth=linewidth)
+        ##########################################################################
+        # move axes closer together
+        plt.tight_layout()
+        ##########################################################################
+        return fig
+
+
+    def make_ba_pp_mw_corr_fig(self, window=2, is_title=False):
+        ##########################################################################
+        # load data
+        avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
+        s1 = pd.Series(avg_token_ba_traj)
+        test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
+        s2 = pd.Series(test_pp_traj)
+        ##########################################################################
+        # moving window corr
+        ba_pp_mw_corr = s1.rolling(window=window).corr(s2)
+        print 'ba_pp_mw_corr'
+        print ba_pp_mw_corr
+        ##########################################################################
+        # choose seaborn style and palette
+        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        sns.set_style('white')
+        ##########################################################################
+        # fig settings
+        figsize = (12, 4)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 10
+        linewidth = 2.0
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize, sharex=True)
+        fig_name = '{} Test Perplexity Trajectory'.format(self.model_name)
+        if is_title: plt.title(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # axis
+        ax.set_ylim([50, 100])
+        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_ylabel('Average Balanced Accuracy', fontsize=ax_font_size)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
+        ##########################################################################
+        # plot
+        x = ba_pp_mw_corr
+        ax.plot(x, ba_pp_mw_corr, '-', linewidth=linewidth)
         ##########################################################################
         # move axes closer together
         plt.tight_layout()
