@@ -108,7 +108,7 @@
         </div>
         <div id="btns">
             <!--need block name only-->
-            <button id="testppBtn" class="button">Test pp</button>
+            <button id="avgtrajBtn" class="button">Avg Traj</button>
             <button id="dimredBtn" class="button">2D Acts</button>
             <button id="catsimBtn" class="button">Dh CatSim</button>
             <button id="bdBtn" class="button">Ba Breakdown</button>
@@ -274,14 +274,15 @@
         </div>
     </div>
 
-    <div id="testppModal" class="modal">
+    <div id="avgtrajModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
             {% if test_pp_traj_img %}
                 <img src="data:image/png;base64,{{ test_pp_traj_img }}">
+                <img src="data:image/png;base64,{{ avg_token_ba_traj_img }}">
             {% else %}
-                <h3 style="color:red">Please select block</h3>
+                <h3 style="color:red">Please select model</h3>
             {% endif %}
         </div>
     </div>
@@ -296,7 +297,7 @@
         var $catsimModal = $('#catsimModal');
         var $neighborsModal = $('#neighborsModal');
         var $batrajModal = $('#batrajModal');
-        var $testppModal = $('#testppModal');
+        var $avgtrajModal = $('#avgtrajModal');
 
         $(document).ready(function() {
             $('#dimredBtn').click(function () {
@@ -320,8 +321,8 @@
             $('#batrajBtn').click(function () {
                 $batrajModal.css('display', 'block');
             });
-            $('#testppBtn').click(function () {
-                $testppModal.css('display', 'block');
+            $('#avgtrajBtn').click(function () {
+                $avgtrajModal.css('display', 'block');
             });
 
 
@@ -334,7 +335,7 @@
                 $catsimModal.css('display', 'none');
                 $neighborsModal.css('display', 'none');
                 $batrajModal.css('display', 'none');
-                $testppModal.css('display', 'none');
+                $avgtrajModal.css('display', 'none');
             });
 
 

@@ -72,13 +72,18 @@ class RNN(RNNHelper):
                 # make database and save
                 df = self.make_df()
                 database = DataBase(self.rnn.configs_dict, df, block_name)
-                database.save_df()
                 ##########################################################################
                 # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
                 trajdatabase = TrajDataBase(self.rnn.configs_dict)
                 test_pp = self.calc_test_pp()
-                new_entry, test_pp, avg_token_ba = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
+                new_entry, test_pp, avg_token_ba,\
+                token_ba_list = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
                 trajdatabase.append_entry(new_entry)
+                ##########################################################################
+                # add token_ba_col to main database
+                token_ba_col = [token_ba_list[database.probe_list.index(probe)] for probe in database.df['probe']]
+                database.add_col('token_ba', token_ba_col)
+                database.save_df()
                 #########################################################################
                 # print to console
                 print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(

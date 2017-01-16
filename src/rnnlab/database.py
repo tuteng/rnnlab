@@ -13,8 +13,6 @@ from rnnhelper import load_rc
 from utilities import calc_probe_sim_mat, load_token_data
 import pandas as pd
 
-pd.set_option('io.hdf.default_format','table')
-
 class DataBase:
     """
     Stores dataframe constructed during rnn training
@@ -37,16 +35,28 @@ class DataBase:
         self.df = df
         self.token_list, self.token_id_dict, self.probe_list, \
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = load_token_data(runs_dir, self.model_name)
+        ##########################################################################
+        # calc instance variables
         self.all_acts_df = self.make_all_acts_df()
+        self.probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
 
+    def add_col(self,col_name, col_data):
+        ##########################################################################
+        assert len(col_data) == len(self.df)
+        self.df[col_name] = col_data
+        ##########################################################################
+        print 'Added {} to dataframe'.format(col_name)
 
 
     def save_df(self, complevel=9):
         ##########################################################################
-        print 'Compressing dataframe with complevel {}'.format(complevel)
-        with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w') as store:
-            store.append('df', self.df, format='table')
-        print 'Saved dataframe'
+        # with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w') as store:
+        #     store.append('df', self.df, format='table')
+
+        with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w', format='fixed') as store: # TODO make sure fixed format works
+            store['df'] = self.df
+        ##########################################################################
+        print 'Saved dataframe with complevel {}'.format(complevel)
 
 
 
@@ -62,8 +72,7 @@ class DataBase:
     def get_ba_breakdown_data(self):
         ##########################################################################
         # make df_cat_and_ba
-        # df_cat_ba = self.df[['cat', 'token_ba']].drop_duplicates().groupby('cat', sort=False).mean()
-        df_cat_ba = self.df.query("columns in ['cat', 'token_ba']").drop_duplicates().groupby('cat', sort=False).mean()
+        df_cat_ba = self.df[['cat', 'token_ba']].drop_duplicates().groupby('cat', sort=False).mean()
         ##########################################################################
         # make cats_sorted_by_ba
         tuples = [tuple for tuple in df_cat_ba.itertuples()]
@@ -120,7 +129,7 @@ class DataBase:
         return all_acts_df
 
 
-    def calc_cat_sim_mat(self, probe_simmat):
+    def calc_cat_sim_mat(self):
         ##########################################################################
         # inits
         num_probes = len(self.probe_list)
@@ -137,7 +146,7 @@ class DataBase:
                 if i != j:
                     probe2 = self.probe_list[j]
                     cat2 = self.probe_cat_dict[probe2]
-                    sim = probe_simmat[i, j]
+                    sim = self.probe_simmat[i, j]
                     cat_sim_dict[cat1][cat2].append(sim)
         ##########################################################################
         # make category simmat
@@ -237,6 +246,7 @@ class DataBase:
         ax.set_xlabel('Pearson Correlation Coefficient', fontsize=ax_font_size)
         ax.set_ylabel('Number of observations', fontsize=ax_font_size)
         ax.hist(corr_mat, bins)
+        # ax.set_xlim([0, 1]) # this has to work with histogram bin data i think
         ##########################################################################
         # Hide the right and top spines
         ax.spines['right'].set_visible(False)
@@ -245,11 +255,11 @@ class DataBase:
         return fig
 
 
-    def gen_neighbor_name_and_sim(self, probe, probe_simmat):
+    def gen_neighbor_name_and_sim(self, probe):
         ##########################################################################
         # convert probe_simmat to sim_tuples_list_list
         sim_tuples_list_list = []
-        for row_id, row in enumerate(probe_simmat):
+        for row_id, row in enumerate(self.probe_simmat):
             sim_tuples_list_list.append([(target, sim) for target, sim in zip(self.probe_list, row)])
         ##########################################################################
         # generate neighbors_name, neighbors_sim
@@ -263,9 +273,6 @@ class DataBase:
 
 
     def make_neighbors_table_fig(self, cat, num_neighbors=10, num_trunc_cols=5, is_titled=False):
-        ##########################################################################
-        # calc probe_simmat
-        probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
         ##########################################################################
         # get col_labels
         cat_probe_list_dict = self.make_cat_probe_list_dict()
@@ -281,7 +288,7 @@ class DataBase:
             neighbors_mat = np.chararray((num_neighbors, num_trunc_cols), itemsize=20)
             neighbors_mat[:] = '' # initialize so that matplotlib can read table
             for probe_id, probe in enumerate(truncated_col_labels):
-                generator = self.gen_neighbor_name_and_sim(probe, probe_simmat)
+                generator = self.gen_neighbor_name_and_sim(probe)
                 for neighbors_id in range(num_neighbors):
                     neighbor_name, neighbor_sim = next(generator)
                     neighbors_mat[neighbors_id, probe_id] = '{:>15} {:.2f}'.format(neighbor_name, neighbor_sim)
@@ -431,11 +438,8 @@ class DataBase:
 
     def make_cat_sim_dh_fig(self, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
         ##########################################################################
-        # calc probe simmat
-        probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
-        ##########################################################################
         # calc cat simmat
-        cat_simmat = self.calc_cat_sim_mat(probe_simmat)
+        cat_simmat = self.calc_cat_sim_mat()
         cat_simmat_labels = self.cat_list # TODO is this correct?
         ##########################################################################
         # fig settings

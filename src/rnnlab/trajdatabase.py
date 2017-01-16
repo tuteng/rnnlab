@@ -30,7 +30,6 @@ class TrajDataBase:
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = load_token_data(runs_dir, self.model_name)
         ##########################################################################
         # open trajstore
-        print 'Opening trajectory store with complevel {}'.format(complevel)
         self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc')
 
 
@@ -46,6 +45,7 @@ class TrajDataBase:
         avg_token_ba = np.mean(token_ba_list)
         for probe, token_ba in zip(self.probe_list, token_ba_list):
             new_entry[probe] = token_ba
+        new_entry['avg_token_ba'] = avg_token_ba
         ##########################################################################
         # add test_pp to new entry
         new_entry['test_pp'] = test_pp
@@ -61,13 +61,14 @@ class TrajDataBase:
         # add block_name col?
         new_entry['block_name'] = block_name
         ##########################################################################
-        return new_entry, test_pp, avg_token_ba
+        return new_entry, test_pp, avg_token_ba, token_ba_list
 
 
     def append_entry(self, new_entry):
         ##########################################################################
         # append to trajstore
-        self.trajstore.append('trajdf', new_entry, data_columns=['test_pp', 'train_hca', 'test_hca'])
+        self.trajstore.append('trajdf', new_entry,
+                              data_columns=['test_pp', 'train_hca', 'test_hca', 'avg_token_ba'])
         ##########################################################################
         print 'Saved new entry to trajstore'
         ##########################################################################
@@ -75,18 +76,10 @@ class TrajDataBase:
         self.trajstore.close()
 
 
-    def get_test_pp(self, block_name):
-        ##########################################################################
-        # get test_pp
-        block_name = block_name
-        test_pp = self.trajstore.select('trajdf', where="columns == test_pp & index == block_name").values.item(0)
-        ##########################################################################
-        return test_pp
-
-
     def get_token_ba_list(self, block_name):
         ##########################################################################
         # get token_ba_list
+        block_name = block_name
         query = self.trajstore.select('trajdf', where="columns in probe_list & index == block_name")
         token_ba_list = query.values.tolist()
         ##########################################################################
@@ -106,7 +99,6 @@ class TrajDataBase:
         # classifier # TODO make sure classifier works
         from classifier import calc_hca
         train_hca, test_hca = calc_hca(self.model_name, x_data, y_data, epochs)
-        train_hca, test_hca = np.nan, np.nan
         ########################################################################################
         return train_hca, test_hca
 
@@ -225,7 +217,7 @@ class TrajDataBase:
         sns.set_style('white')
         ##########################################################################
         # load test_pp from trajstore
-        test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values  # only works if indexed
+        test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -254,6 +246,49 @@ class TrajDataBase:
             if n == 1:
                 axarr[n].set_ylim([0, 100])
                 axarr[n].set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ##########################################################################
+        # move axes closer
+        plt.tight_layout()
+        ##########################################################################
+        return fig
+
+
+
+    def make_avg_token_ba_traj_fig(self, is_title=False):
+        ##########################################################################
+        # choose seaborn style and palette
+        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        sns.set_style('white')
+        ##########################################################################
+        # load test_pp from trajstore
+        avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
+        ##########################################################################
+        # fig settings
+        figsize = (12, 4)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 10
+        linewidth = 2.0
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize, sharex=True)
+        fig_name = '{} Test Perplexity Trajectory'.format(self.model_name)
+        if is_title: plt.title(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # axis
+        ax.set_ylim([50, 100])
+        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_ylabel('Average Balanced Accuracy', fontsize=ax_font_size)
+        ax.plot(range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev), avg_token_ba_traj,
+                '-', linewidth=linewidth)
+        ##########################################################################
+        # Hide the right and top spines and ticks
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
+        ##########################################################################
+        # move axes closer together
+        plt.tight_layout()
         ##########################################################################
         return fig
 

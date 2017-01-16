@@ -106,6 +106,7 @@ def home():
     neighbors_table_img = None
     token_ba_trajectories_img = None
     test_pp_traj_img = None
+    avg_token_ba_traj_img = None
     probes = [DEFAULTS['sel_probe']]
     ##########################################################################
     # load log entries and any requests
@@ -124,42 +125,52 @@ def home():
             database, trajdatabase = load_databases(sel_model_name, sel_block_name) # TODO how to cache this?
             ##########################################################################
             # make test_pp_traj_img
+            print 'Making test_pp_traj_img'
             fig = trajdatabase.make_test_pp_traj_fig()
             figfile = StringIO.StringIO()
             fig.savefig(figfile, format='png')
             figfile.seek(0)
             test_pp_traj_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
+            # make avg_token_ba_traj_img
+            print 'Making avg_token_ba_traj_img'
+            fig = trajdatabase.make_avg_token_ba_traj_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            avg_token_ba_traj_img = base64.b64encode(figfile.getvalue())
+            ##########################################################################
             # make ba_breakdown_scatter_img
-            # print 'Making ba_breakdown_scatter_img'
-            # fig = database.make_ba_breakdown_scatter_fig()
-            # figfile = StringIO.StringIO()
-            # fig.savefig(figfile, format='png')
-            # figfile.seek(0)
-            # ba_breakdown_scatter_img = base64.b64encode(figfile.getvalue())
-            # ##########################################################################
-            # # make ba_breakdown_img
-            # print 'Making ba_breakdown_img'
-            # fig = database.make_ba_breakdown_fig()
-            # figfile = StringIO.StringIO()
-            # fig.savefig(figfile, format='png')
-            # figfile.seek(0)
-            # ba_breakdow_img = base64.b64encode(figfile.getvalue())
-            # ##########################################################################
-            # # make_acts_2d_fig
-            # print 'Making acts_2d_img'
-            # fig = database.make_acts_2d_fig()
-            # figfile = StringIO.StringIO()
-            # fig.savefig(figfile, format='png')
-            # figfile.seek(0)
-            # acts_2d_img = base64.b64encode(figfile.getvalue())
-            # ##########################################################################
-            # # make cat_sim_dh_img
-            # fig = database.make_cat_sim_dh_fig()
-            # figfile = StringIO.StringIO()
-            # fig.savefig(figfile, format='png')
-            # figfile.seek(0)
-            # cat_sim_dh_img = base64.b64encode(figfile.getvalue())
+            print 'Making ba_breakdown_scatter_img'
+            fig = database.make_ba_breakdown_scatter_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            ba_breakdown_scatter_img = base64.b64encode(figfile.getvalue())
+            ##########################################################################
+            # make ba_breakdown_img
+            print 'Making ba_breakdown_img'
+            fig = database.make_ba_breakdown_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            ba_breakdow_img = base64.b64encode(figfile.getvalue())
+            ##########################################################################
+            # make_acts_2d_fig
+            print 'Making acts_2d_img'
+            fig = database.make_acts_2d_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            acts_2d_img = base64.b64encode(figfile.getvalue())
+            ##########################################################################
+            # make cat_sim_dh_img
+            print 'Making cat_sim_dh_img'
+            fig = database.make_cat_sim_dh_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            cat_sim_dh_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
             if sel_cat != DEFAULTS['sel_cat']:
                 ##########################################################################
@@ -169,20 +180,20 @@ def home():
                 sel_probes = probes[1:] # remove 'Select'
                 ##########################################################################
                 # make neighbors_table_img
-                # print 'Making neighbors_table_img'
-                # fig = database.make_neighbors_table_fig(sel_cat)
-                # figfile = StringIO.StringIO()
-                # fig.savefig(figfile, format='png')
-                # figfile.seek(0)
-                # neighbors_table_img = base64.b64encode(figfile.getvalue())
-                # ##########################################################################
-                # # make cat_cluster_img
-                # print 'Making cat_cluster_img for...'
-                # fig = database.make_cat_cluster_fig(sel_cat)
-                # figfile = StringIO.StringIO()
-                # fig.savefig(figfile, format='png')
-                # figfile.seek(0)
-                # cat_cluster_img = base64.b64encode(figfile.getvalue())
+                print 'Making neighbors_table_img'
+                fig = database.make_neighbors_table_fig(sel_cat)
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                neighbors_table_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make cat_cluster_img
+                print 'Making cat_cluster_img'
+                fig = database.make_cat_cluster_fig(sel_cat)
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                cat_cluster_img = base64.b64encode(figfile.getvalue())
                 ##########################################################################
                 # make token_ba trajectories_fig
                 print 'Making token_ba_trajectories_img for probes in "{}"'.format(sel_cat)
@@ -195,29 +206,28 @@ def home():
             if sel_probe != DEFAULTS['sel_probe']:
                 ##########################################################################
                 # make acts_dh_fig for a single token
-                # print 'Making acts_dh_img (single probe)'
-                # fig = database.make_acts_dh_fig(sel_probe)
-                # figfile = StringIO.StringIO()
-                # fig.savefig(figfile, format='png')
-                # figfile.seek(0)
-                # token_acts_dh_img = base64.b64encode(figfile.getvalue())
-                # ##########################################################################
-                # # make acts_dh_fig for all tokens
-                # print 'Making acts_dh_img (all probes)'
-                # fig = database.make_acts_dh_fig(probe=None)
-                # figfile = StringIO.StringIO()
-                # fig.savefig(figfile, format='png')
-                # figfile.seek(0)
-                # acts_dh_img = base64.b64encode(figfile.getvalue())
-                # ##########################################################################
-                # # make_token_corcoeff_hist_fig
-                # print 'Making token_corcoeff_hist_img'
-                # fig = database.make_token_corcoeff_hist_fig(sel_probe)
-                # figfile = StringIO.StringIO()
-                # fig.savefig(figfile, format='png')
-                # figfile.seek(0)
-                # token_corcoeff_hist_img = base64.b64encode(figfile.getvalue())
-                pass
+                print 'Making (single probe) acts_dh_img'
+                fig = database.make_acts_dh_fig(sel_probe)
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                token_acts_dh_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make acts_dh_fig for all tokens
+                print 'Making (all probes) acts_dh_img '
+                fig = database.make_acts_dh_fig()
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                acts_dh_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make_token_corcoeff_hist_fig
+                print 'Making token_corcoeff_hist_img'
+                fig = database.make_token_corcoeff_hist_fig(sel_probe)
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                token_corcoeff_hist_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
             # close trajstore
             trajdatabase.trajstore.close()
@@ -248,7 +258,8 @@ def home():
                            cat_sim_dh_img=cat_sim_dh_img,
                            neighbors_table_img=neighbors_table_img,
                            token_ba_trajectories_img=token_ba_trajectories_img,
-                           test_pp_traj_img=test_pp_traj_img)
+                           test_pp_traj_img=test_pp_traj_img,
+                           avg_token_ba_traj_img=avg_token_ba_traj_img)
 
 
 @app.route('/template/', methods=['GET', 'POST']) # TODO template for fig
