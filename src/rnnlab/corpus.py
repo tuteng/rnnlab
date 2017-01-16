@@ -33,11 +33,9 @@ class Corpus(object):
 
     def get_corpus_content(self):
         ##########################################################################
-        print 'Loading corpus from {}'.format(self.data_dir)
-        ##########################################################################
         # load corpus
         corpus_content = []
-        with open(os.path.join(self.data_dir, 'corpus.txt'),'r') as f:
+        with open(os.path.join(self.data_dir, self.corpus_name, 'corpus.txt'),'r') as f:
             for doc in f.readlines():
                 corpus_content.append(doc.strip().strip('\n'))
         num_total_docs = len(corpus_content)
