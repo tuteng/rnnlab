@@ -10,7 +10,7 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
 from rnnhelper import load_rc
-from utilities import calc_probe_sim_mat
+from utilities import calc_probe_sim_mat, load_token_data
 import pandas as pd
 
 pd.set_option('io.hdf.default_format','table')
@@ -26,31 +26,25 @@ class DataBase:
 
     def __init__(self, configs_dict, df, block_name):
         ##########################################################################
-        # define directories
-        dev_path = os.path.join('rnnlab', 'data')
-        if os.path.isdir(dev_path):
-            self.data_dir = dev_path
-        else:
-            self.data_dir = os.path.join('data')
-        self.runs_dir = load_rc('runs_dir')
+        # define dfpath
+        runs_dir = load_rc('runs_dir')
+        self.dfpath = os.path.join(runs_dir, configs_dict['model_name'], 'Data_Frame',
+                                   'df_block_{}.h5'.format(block_name))
         ##########################################################################
         # assign instance variables
-        self.configs_dict = configs_dict
         self.model_name = configs_dict['model_name']
-        self.df = df
         self.block_name = block_name
+        self.df = df
         self.token_list, self.token_id_dict, self.probe_list, \
-        self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.load_token_data()
+        self.probe_id_dict, self.probe_cat_dict, self.cat_list = load_token_data(runs_dir, self.model_name)
         self.all_acts_df = self.make_all_acts_df()
 
 
 
     def save_df(self, complevel=9):
         ##########################################################################
-        path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
-        file_name = 'df_block_{}.h5'.format(self.block_name)
-        print 'Compressing df with complevel {}'.format(complevel)
-        with pd.HDFStore(os.path.join(path, file_name),complevel=complevel,complib='blosc',mode='w') as store:
+        print 'Compressing dataframe with complevel {}'.format(complevel)
+        with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w') as store:
             store.append('df', self.df, format='table')
         print 'Saved dataframe'
 
@@ -159,38 +153,28 @@ class DataBase:
         return cat_simmat
 
 
-    def load_token_data(self):
-        ##########################################################################
-        path = os.path.join(self.runs_dir, self.model_name, 'Token_Data')
-        file_name = 'token_data.npz'.format(self.model_name)
-        npzfile = np.load(os.path.join(path, file_name))
-        token_list, token_id_dict = npzfile['token_list'].tolist(), npzfile['token_id_dict'].item()
-        probe_list, probe_id_dict = npzfile['probe_list'].tolist(), npzfile['probe_id_dict'].item()
-        probe_cat_dict = npzfile['probe_cat_dict'].item()
-        cat_list = npzfile['cat_list'].tolist()
-        ##########################################################################
-        return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
-
 
     def make_acts_2d_fig(self, label_probe=False, is_titled=False):
         ##########################################################################
+        # choose seaborn style and palette
+        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        sns.set_style('white')
+        palette = np.array(sns.color_palette("hls", len(self.cat_list)))
+        ##########################################################################
         # svd
-        u, s, v = linalg.svd(self.all_acts_mat)  # row_singular_vectors, singular_values, column_singular_vectors
+        u, s, v = linalg.svd(self.all_acts_df.values)  # row_singular_vectors, singular_values, column_singular_vectors
         acts_2d_svd = u[:, :2]  # TODO make sure this is right
         ##########################################################################
         # tsne
-        acts_2d_tsne = TSNE().fit_transform(self.all_acts_mat)
+        acts_2d_tsne = TSNE().fit_transform(self.all_acts_df.values)
         ##########################################################################
         # get cat for each probe for plotting
         acts_cats = [self.probe_cat_dict[probe] for probe in self.probe_list]
         ##########################################################################
-        # choose a style with seaborn
-        import seaborn as sns # if globally imported, will change all other figs unpredictably
-        sns.set_style('white')
-        ##########################################################################
-        # make scatter and add text
-        palette = np.array(sns.color_palette("hls", len(self.cat_list)))
+        # fig
         fig, axarr = plt.subplots(1, 2, figsize=(12, 8))
+        ##########################################################################
+        # axis
         for n, x in enumerate([acts_2d_svd, acts_2d_tsne]):
             palette_ids = [self.cat_list.index(cat) for cat in acts_cats]
             axarr[n].scatter(x[:, 0], x[:, 1], lw=0, s=40, c=palette[palette_ids])
@@ -281,7 +265,7 @@ class DataBase:
     def make_neighbors_table_fig(self, cat, num_neighbors=10, num_trunc_cols=5, is_titled=False):
         ##########################################################################
         # calc probe_simmat
-        probe_simmat = self.calc_probe_sim_mat()
+        probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
         ##########################################################################
         # get col_labels
         cat_probe_list_dict = self.make_cat_probe_list_dict()

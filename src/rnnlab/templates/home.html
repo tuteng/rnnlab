@@ -108,6 +108,7 @@
         </div>
         <div id="btns">
             <!--need block name only-->
+            <button id="testppBtn" class="button">Test pp</button>
             <button id="dimredBtn" class="button">2D Acts</button>
             <button id="catsimBtn" class="button">Dh CatSim</button>
             <button id="bdBtn" class="button">Ba Breakdown</button>
@@ -265,11 +266,22 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
-            <h3>Block: {{sel_block_name}}</h3>
             {% if token_ba_trajectories_img %}
                 <img src="data:image/png;base64,{{ token_ba_trajectories_img }}">
             {% else %}
                 <h3 style="color:red">Please select category</h3>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="testppModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            {% if test_pp_traj_img %}
+                <img src="data:image/png;base64,{{ test_pp_traj_img }}">
+            {% else %}
+                <h3 style="color:red">Please select block</h3>
             {% endif %}
         </div>
     </div>
@@ -284,6 +296,7 @@
         var $catsimModal = $('#catsimModal');
         var $neighborsModal = $('#neighborsModal');
         var $batrajModal = $('#batrajModal');
+        var $testppModal = $('#testppModal');
 
         $(document).ready(function() {
             $('#dimredBtn').click(function () {
@@ -307,6 +320,9 @@
             $('#batrajBtn').click(function () {
                 $batrajModal.css('display', 'block');
             });
+            $('#testppBtn').click(function () {
+                $testppModal.css('display', 'block');
+            });
 
 
 
@@ -318,24 +334,13 @@
                 $catsimModal.css('display', 'none');
                 $neighborsModal.css('display', 'none');
                 $batrajModal.css('display', 'none');
+                $testppModal.css('display', 'none');
             });
 
 
         });
 
 
-
-
-
-
-
-        // TODO window click doesn't work
-        $(window).click(function (event) {
-            if (event.target == $dimredModal) {
-                $dimredModal.css('display', 'none');
-                $('#dhModal').css('display', 'none');
-            }
-        });
     </script>
 
 

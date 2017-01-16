@@ -75,7 +75,7 @@ class RNN(RNNHelper):
                 database.save_df()
                 ##########################################################################
                 # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
-                trajdatabase = TrajDataBase(self.rnn.configs_dict, self.rnn.corpus.num_train_docs)
+                trajdatabase = TrajDataBase(self.rnn.configs_dict)
                 test_pp = self.calc_test_pp()
                 new_entry, test_pp, avg_token_ba = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
                 trajdatabase.append_entry(new_entry)

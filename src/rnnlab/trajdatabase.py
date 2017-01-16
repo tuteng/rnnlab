@@ -5,10 +5,8 @@ import multiprocessing as mp
 import matplotlib.pyplot as plt
 from utilities import calc_ba_mats
 from rnnhelper import load_rc
-from utilities import calc_probe_sim_mat
+from utilities import calc_probe_sim_mat, load_token_data
 import pandas as pd
-
-pd.set_option('io.hdf.default_format','table')
 
 class TrajDataBase:
     """
@@ -19,27 +17,21 @@ class TrajDataBase:
     Can also be instantiated outside of training for pos-hoc analysis
     """
 
-    def __init__(self, configs_dict, num_train_blocks, complevel=9):
+    def __init__(self, configs_dict, complevel=9):
         ##########################################################################
-        # define directories
-        dev_path = os.path.join('rnnlab', 'data')
-        if os.path.isdir(dev_path):
-            self.data_dir = dev_path
-        else:
-            self.data_dir = os.path.join('data')
-        self.runs_dir = load_rc('runs_dir')
-        self.trajdfpath = os.path.join(self.runs_dir, configs_dict['model_name'], 'Data_Frame', 'trajdf.h5')
+        # define trajdfpath
+        runs_dir = load_rc('runs_dir')
+        self.trajdfpath = os.path.join(runs_dir, configs_dict['model_name'], 'Data_Frame', 'trajdf.h5')
         ##########################################################################
         # assign instance variables
         self.model_name = configs_dict['model_name']
+        self.save_ev = configs_dict['save_ev']
         self.token_list, self.token_id_dict, self.probe_list, \
-        self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.load_token_data()
-        self.num_train_blocks = num_train_blocks
+        self.probe_id_dict, self.probe_cat_dict, self.cat_list = load_token_data(runs_dir, self.model_name)
         ##########################################################################
         # open trajstore
         print 'Opening trajectory store with complevel {}'.format(complevel)
         self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc')
-        # self.trajstore.create_table_index('block_names', columns=['block_name'])  # TODO this is slowing down writing
 
 
     def calc_new_entry(self, df, all_acts_df, test_pp, block_name, use_classifier=False):
@@ -75,14 +67,9 @@ class TrajDataBase:
     def append_entry(self, new_entry):
         ##########################################################################
         # append to trajstore
-        self.trajstore.append('trajdf', new_entry)
-                     # data_columns=False,  # TODO True takes too long?
-                     # expected_rows=self.num_train_blocks, # should make read faster
-                     # index=False) #TODO debugging
+        self.trajstore.append('trajdf', new_entry, data_columns=['test_pp', 'train_hca', 'test_hca'])
         ##########################################################################
         print 'Saved new entry to trajstore'
-        print 'In store:'
-        print self.trajstore
         ##########################################################################
         # close strajstore
         self.trajstore.close()
@@ -104,18 +91,6 @@ class TrajDataBase:
         token_ba_list = query.values.tolist()
         ##########################################################################
         return token_ba_list
-
-
-
-    def get_avg_col_multiple_dfs(self, col_name):  # TODO is this useful?
-        ##########################################################################
-        # query all dfs stored in model's dir for a single colum and take mean
-        path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
-        query_list = []
-        series = self.trajstore.select_column('trajdf', col_name)  # only works if col was indexed during saving
-        query_list.append(np.mean(series.values))
-        ##########################################################################
-        return query_list
 
 
     def calc_hca(self, acts_cols, cat_col, epochs=30):
@@ -177,31 +152,13 @@ class TrajDataBase:
         return token_ba_list
 
 
-    def load_token_data(self):
-        ##########################################################################
-        path = os.path.join(self.runs_dir, self.model_name, 'Token_Data')
-        file_name = 'token_data.npz'.format(self.model_name)
-        npzfile = np.load(os.path.join(path, file_name))
-        token_list, token_id_dict = npzfile['token_list'].tolist(), npzfile['token_id_dict'].item()
-        probe_list, probe_id_dict = npzfile['probe_list'].tolist(), npzfile['probe_id_dict'].item()
-        probe_cat_dict = npzfile['probe_cat_dict'].item()
-        cat_list = npzfile['cat_list'].tolist()
-        ##########################################################################
-        return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
-
-
-
 
     def make_token_ba_traj_mat(self, sel_probes):
         ##########################################################################
         # query all dfs stored in model's dir
-        start = time.time()
-        path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
         sel_probes = sel_probes # probes_list is used in query
         token_ba_traj_df = self.trajstore.select('trajdf', where="columns in sel_probes")
-        token_ba_traj_mat = token_ba_traj_df.values
-        print token_ba_traj_mat.shape
-        print 'time:', abs(time.time() - start)
+        token_ba_traj_mat = token_ba_traj_df.values.transpose()
         ##########################################################################
         return token_ba_traj_mat
 
@@ -209,18 +166,66 @@ class TrajDataBase:
 
     def fast_query(self, block_name): # futureproofing: is this useful?
         ##########################################################################
-        path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
-        file_name = 'df_block_{}.h5'.format(block_name)
-        with pd.HDFStore(os.path.join(path, file_name), mode='r') as store:
+        with pd.HDFStore(self.trajdfpath, mode='r') as store:
             # any kind of query:
             query_value = store.select('trajdf', where="token_ba < 50")
         ##########################################################################
         return query_value
 
 
+    def make_token_ba_trajectories_fig(self, sel_probes, sel_cat, is_title=False): # for probes in cat
+        ##########################################################################
+        # choose seaborn style and palette
+        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        sns.set_style('white')
+        palette = iter(sns.color_palette("hls", len(sel_probes)))
+        ##########################################################################
+        # fig settings
+        ymax, max_num_probes = 8, 45 # empirical
+        ysize = max(ymax * len(sel_probes)/max_num_probes, 6) # prevents fig to be too small
+        figsize = (14, ysize)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 8
+        linewidth = 2.0
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize)
+        fig_name = '{} Token Balanced Accuracies for probes in {}'.format(self.model_name, sel_cat)
+        if is_title: plt.title(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # axes
+        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
+
+        ##########################################################################
+        # Hide the right and top spines and ticks
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
+        ax.set_ylim([0, 100])
+        ##########################################################################
+        # get token_ba trajectories and plot
+        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes)
+        for token_ba_traj, probe in zip(token_ba_traj_mat, sel_probes):
+            ax.plot(range(0, len(token_ba_traj) *self.save_ev, self.save_ev), token_ba_traj,
+                    '-', linewidth=linewidth, label=probe, c=next(palette))
+        ##########################################################################
+        # legend
+        ax.set_position([0.1, 0.1, 0.8, 0.85]) # 0.8  shrinks width and makes room for legend
+        ax.legend(fontsize=leg_font_size, loc='best', bbox_to_anchor=(1.11, 1.05))
+        ##########################################################################
+        return fig
 
 
-    def make_token_ba_trajectories_fig(self, sel_probes, cat, is_title=False): # for probes in cat
+    def make_test_pp_traj_fig(self, is_title=False):
+        ##########################################################################
+        # choose seaborn style and palette
+        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        sns.set_style('white')
+        ##########################################################################
+        # load test_pp from trajstore
+        test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values  # only works if indexed
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -228,46 +233,29 @@ class TrajDataBase:
         ax_font_size = 16
         leg_font_size = 10
         linewidth = 2.0
-        # fig
         ##########################################################################
-        fig, ax = plt.subplots(figsize=figsize)
-        fig_name = '{} Token Balanced Accuracies for probes in {}'.format(self.model_name, cat)
+        # fig
+        fig, axarr = plt.subplots(2, 1, figsize=figsize, sharex=True)
+        fig_name = '{} Test Perplexity Trajectory'.format(self.model_name)
         if is_title: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axes
-        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
-        ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
-        ##########################################################################
-        # Hide the right and top spines and ticks
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.tick_params(axis='both', which='both', top='off', right='off')
-        ##########################################################################
-        # get token_ba trajectories and plot
-        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes)
-        for token_ba_traj, probe in zip(token_ba_traj_mat, sel_probes):
-            num_x = len(token_ba_traj)
-            ax.plot(range(num_x), token_ba_traj, '-', linewidth=linewidth, label=probe) # TODO x axis labels are block 1,2,3,4..
-        ##########################################################################
-        # legend
-        ax.set_position([0.1, 0.1, 0.5, 0.8])
-        ax.legend(fontsize=leg_font_size, loc='center right', bbox_to_anchor=(1.1, 0.5)) # TODO instead of legend make annotations
-
-        plt.tight_layout()
+        for n in range(2):
+            axarr[n].set_ylabel('Test Perplexity Score', fontsize=ax_font_size)
+            axarr[n].plot(range(0, len(test_pp_traj) * self.save_ev, self.save_ev), test_pp_traj,
+                    '-', linewidth=linewidth)
+            ##########################################################################
+            # Hide the right and top spines and ticks
+            axarr[n].spines['right'].set_visible(False)
+            axarr[n].spines['top'].set_visible(False)
+            axarr[n].tick_params(axis='both', which='both', top='off', right='off')
+            ##########################################################################
+            # second subplot is zoomed in
+            if n == 1:
+                axarr[n].set_ylim([0, 100])
+                axarr[n].set_xlabel('Training Blocks', fontsize=ax_font_size)
         ##########################################################################
         return fig
-
-
-    def make_pp_curve_fig(self, smoothing_span=20):
-        ##########################################################################
-        # pp_curve = ?
-        if smoothing_span > 1:
-            from pandas.stats.moments import ewma
-            pp_curve = ewma(np.asarray(pp_curve), span=smoothing_span)
-        else:
-            pp_curve = pp_curve
-        ##########################################################################
-        # TODO finish this
 
 
 

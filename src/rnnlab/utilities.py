@@ -1,4 +1,19 @@
 import numpy as np
+import os
+
+
+def load_token_data(runs_dir, model_name):
+    ##########################################################################
+    path = os.path.join(runs_dir, model_name, 'Token_Data')
+    file_name = 'token_data.npz'.format(model_name)
+    npzfile = np.load(os.path.join(path, file_name))
+    token_list, token_id_dict = npzfile['token_list'].tolist(), npzfile['token_id_dict'].item()
+    probe_list, probe_id_dict = npzfile['probe_list'].tolist(), npzfile['probe_id_dict'].item()
+    probe_cat_dict = npzfile['probe_cat_dict'].item()
+    cat_list = npzfile['cat_list'].tolist()
+    ##########################################################################
+    return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
+
 
 
 def calc_probe_sim_mat(all_acts_df, probe_list):
