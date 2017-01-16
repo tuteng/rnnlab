@@ -50,10 +50,11 @@
             background-color: #FF9B12;
             border: none;
             color: black;
-            padding: 12px 12px;
+            padding: 10px 10px;
             text-align: center;
             display: inline-block;
             cursor : pointer;
+            margin: 5px 0px;
         }
         .dropdown {
            color: black;
@@ -282,6 +283,7 @@
             {% if test_pp_traj_img %}
                 <img src="data:image/png;base64,{{ test_pp_traj_img }}">
                 <img src="data:image/png;base64,{{ avg_token_ba_traj_img }}">
+                <img src="data:image/png;base64,{{ ba_pp_mw_corr_img }}">
             {% else %}
                 <h3 style="color:red">Please select model</h3>
             {% endif %}

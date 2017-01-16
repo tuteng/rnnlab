@@ -8,7 +8,7 @@ import numpy as np
 import StringIO
 from database import DataBase
 from trajdatabase import TrajDataBase
-from rnnlab import load_rc
+from utilities import load_rc
 
 ##########################################################################
 app = Flask(__name__)
@@ -108,6 +108,7 @@ def home():
     test_pp_traj_img = None
     avg_token_ba_traj_img = None
     cfreq_traj_img = None
+    ba_pp_mw_corr_img = None
     probes = [DEFAULTS['sel_probe']]
     ##########################################################################
     # load log entries and any requests
@@ -140,6 +141,14 @@ def home():
             fig.savefig(figfile, format='png')
             figfile.seek(0)
             avg_token_ba_traj_img = base64.b64encode(figfile.getvalue())
+            ##########################################################################
+            # make avg_token_ba_traj_img
+            print 'Making ba_pp_mw_corr_img'
+            fig = trajdatabase.make_ba_pp_mw_corr_fig()
+            figfile = StringIO.StringIO()
+            fig.savefig(figfile, format='png')
+            figfile.seek(0)
+            ba_pp_mw_corr_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
             # make ba_breakdown_scatter_img
             print 'Making ba_breakdown_scatter_img'
@@ -269,7 +278,8 @@ def home():
                            token_ba_trajs_img=token_ba_trajs_img,
                            test_pp_traj_img=test_pp_traj_img,
                            avg_token_ba_traj_img=avg_token_ba_traj_img,
-                           cfreq_traj_img=cfreq_traj_img)
+                           cfreq_traj_img=cfreq_traj_img,
+                           ba_pp_mw_corr_img=ba_pp_mw_corr_img)
 
 
 @app.route('/template/', methods=['GET', 'POST']) # TODO template for fig

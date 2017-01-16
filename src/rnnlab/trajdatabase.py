@@ -348,7 +348,7 @@ class TrajDataBase:
         return fig
 
 
-    def make_ba_pp_mw_corr_fig(self, window=2, is_title=False):
+    def make_ba_pp_mw_corr_fig(self, window=5, is_title=False):
         ##########################################################################
         # load data
         avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
@@ -358,8 +358,6 @@ class TrajDataBase:
         ##########################################################################
         # moving window corr
         ba_pp_mw_corr = s1.rolling(window=window).corr(s2)
-        print 'ba_pp_mw_corr'
-        print ba_pp_mw_corr
         ##########################################################################
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
@@ -378,15 +376,15 @@ class TrajDataBase:
         if is_title: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axis
-        ax.set_ylim([50, 100])
-        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
-        ax.set_ylabel('Average Balanced Accuracy', fontsize=ax_font_size)
+        ax.set_ylim([0, 1])
+        ax.set_xlabel('Training Blocks Windows ({} blocks per windw)'.format(window), fontsize=ax_font_size)
+        ax.set_ylabel('Correlation Coefficient', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
         ##########################################################################
         # plot
-        x = ba_pp_mw_corr
+        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
         ax.plot(x, ba_pp_mw_corr, '-', linewidth=linewidth)
         ##########################################################################
         # move axes closer together
