@@ -3,8 +3,7 @@ import numpy as np
 import multiprocessing as mp
 import matplotlib.pyplot as plt
 from utilities import calc_ba_mats
-from rnnlab import load_rc
-from utilities import calc_probe_sim_mat, load_token_data
+from utilities import calc_probe_sim_mat, load_token_data, load_rc
 import pandas as pd
 
 class TrajDataBase:

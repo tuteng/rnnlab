@@ -7,7 +7,7 @@ from abc import ABCMeta
 import numpy as np
 
 from corpus import Corpus
-from rnnlab import load_rc
+from utilities import load_rc
 
 
 class RNNHelper(object):

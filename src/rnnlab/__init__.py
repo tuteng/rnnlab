@@ -1,6 +1,5 @@
 from rnn import RNN
-from rnnhelper import load_rc, get_childes_data
-from rnnlab.utilities import gen_user_configs, load_rc, get_childes_data
+from utilities import gen_user_configs, load_rc, get_childes_data
 
 __version__ = "1.5.0"
 

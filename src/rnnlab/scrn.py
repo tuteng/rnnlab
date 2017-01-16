@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 import numpy as np # needed for identity matrix init
-from rnnlab import load_rc
+from utilities import load_rc
 
 
 class SCRN(object):
