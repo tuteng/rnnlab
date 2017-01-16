@@ -132,7 +132,8 @@ class RNN(RNNHelper):
                  probe_id_dict=self.rnn.corpus.probe_id_dict,  # this dict is relative to num_probes
                  probe_list=self.rnn.corpus.probe_list,
                  probe_cat_dict=self.rnn.corpus.probe_cat_dict,
-                 cat_list=self.rnn.corpus.cat_list)
+                 cat_list=self.rnn.corpus.cat_list,
+                 probe_cf_traj_dict=self.rnn.corpus.probe_cf_traj_dict)
         ##########################################################################
         #  save configs_dict to npy
         path = os.path.join(self.runs_dir, self.rnn.model_name, 'Configs')

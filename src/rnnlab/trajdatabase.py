@@ -1,5 +1,4 @@
 import os, sys, time
-from operator import itemgetter
 import numpy as np
 import multiprocessing as mp
 import matplotlib.pyplot as plt
@@ -26,8 +25,11 @@ class TrajDataBase:
         # assign instance variables
         self.model_name = configs_dict['model_name']
         self.save_ev = configs_dict['save_ev']
-        self.token_list, self.token_id_dict, self.probe_list, \
-        self.probe_id_dict, self.probe_cat_dict, self.cat_list = load_token_data(runs_dir, self.model_name)
+        ##########################################################################
+        # load token data
+        self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
+        self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict, \
+        self.probe_cf_traj_dict = load_token_data(runs_dir, self.model_name)
         ##########################################################################
         # open trajstore
         self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc')
@@ -58,7 +60,7 @@ class TrajDataBase:
         else: train_hca, test_hca = np.nan, np.nan
         new_entry['train_hca'], new_entry['test_hca'] = train_hca, test_hca
         ##########################################################################
-        # add block_name col?
+        # add block_name as to index
         new_entry['block_name'] = block_name
         ##########################################################################
         return new_entry, test_pp, avg_token_ba, token_ba_list
@@ -74,16 +76,6 @@ class TrajDataBase:
         ##########################################################################
         # close strajstore
         self.trajstore.close()
-
-
-    def get_token_ba_list(self, block_name):
-        ##########################################################################
-        # get token_ba_list
-        block_name = block_name
-        query = self.trajstore.select('trajdf', where="columns in probe_list & index == block_name")
-        token_ba_list = query.values.tolist()
-        ##########################################################################
-        return token_ba_list
 
 
     def calc_hca(self, acts_cols, cat_col, epochs=30):
@@ -120,11 +112,12 @@ class TrajDataBase:
             if round(thr_end, 2) == round(thr_start, 2):  # TODO why do i have to round here?
                 break
         ##########################################################################
-        # calc ba
         if mp.cpu_count() < num_cpus: sys.exit(
             'rnnlab: CPU Count is < 6. Parallel calculation of token_ba may not work')
         else:
             print 'Calculating token ba using {} processes...'.format(num_cpus)
+        ##########################################################################
+        # calc ba
         pool = mp.Pool(processes=num_cpus)
         async_results = [pool.apply_async(calc_ba_mats, args=(self.probe_list,
                                                               self.cat_list,
@@ -165,7 +158,10 @@ class TrajDataBase:
         return query_value
 
 
-    def make_token_ba_trajectories_fig(self, sel_probes, sel_cat, is_title=False): # for probes in cat
+    def make_token_ba_trajs_fig(self, sel_probes, sel_cat, is_title=False):
+        ##########################################################################
+        # make token_ba_traj_mat
+        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes)
         ##########################################################################
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
@@ -173,8 +169,8 @@ class TrajDataBase:
         palette = iter(sns.color_palette("hls", len(sel_probes)))
         ##########################################################################
         # fig settings
-        ymax, max_num_probes = 8, 45 # empirical
-        ysize = max(ymax * len(sel_probes)/max_num_probes, 6) # prevents fig to be too small
+        ymax, max_num_probes = 14, 75  # 75 is largest number of probes (mammals cat)
+        ysize = max(6, ymax * len(sel_probes) / max_num_probes)  # prevents fig to be too small
         figsize = (14, ysize)
         title_font_size = 16
         ax_font_size = 16
@@ -189,35 +185,97 @@ class TrajDataBase:
         # axes
         ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
         ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
-
-        ##########################################################################
-        # Hide the right and top spines and ticks
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
         ax.set_ylim([0, 100])
         ##########################################################################
-        # get token_ba trajectories and plot
-        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes)
+        # plot
         for token_ba_traj, probe in zip(token_ba_traj_mat, sel_probes):
-            ax.plot(range(0, len(token_ba_traj) *self.save_ev, self.save_ev), token_ba_traj,
-                    '-', linewidth=linewidth, label=probe, c=next(palette))
+            x = range(0, len(token_ba_traj) *self.save_ev, self.save_ev)
+            ax.plot(x, token_ba_traj, '-', linewidth=linewidth, label=probe, c=next(palette))
         ##########################################################################
         # legend
-        ax.set_position([0.1, 0.1, 0.8, 0.85]) # 0.8  shrinks width and makes room for legend
+        ax.set_position([0.1, 0.1, 0.8, 0.85]) # 0.8  shrinks width to make room for legend
         ax.legend(fontsize=leg_font_size, loc='best', bbox_to_anchor=(1.11, 1.05))
+        ##########################################################################
+        return fig
+
+
+    def make_cfreq_traj_fig(self, sel_probes, sel_cat, is_titled=False):
+        ##########################################################################
+        # make cat_ba_traj
+        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes) # dims: (probes, blocks)
+        cat_ba_traj = np.mean(token_ba_traj_mat,  axis=0)
+        ##########################################################################
+        # choose seaborn style and palette
+        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        sns.set_style('white')
+        palette = iter(sns.color_palette("hls", len(sel_probes)))
+        ##########################################################################
+        # fig settings
+        ymax, max_num_probes = 10, 75  # 75 is largest number of probes (mammals cat)
+        ysize = max(6, ymax * len(sel_probes) / max_num_probes)  # prevents fig to be too small
+        figsize = (14, ysize)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 12
+        linewidth = 2.0
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize)
+        fig_name = '{} CumFrequencies & Balanced Acc for probes in {}'.format(self.model_name, sel_cat)
+        if is_titled: plt.title(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # axes
+        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
+        ax.set_ylim([0,100])
+        ax2 = ax.twinx()
+        ax2.set_ylabel('Cumulative Frequency', fontsize=ax_font_size)
+        ##########################################################################
+        # plot cat ba
+        x = range(0, len(cat_ba_traj) * self.save_ev, self.save_ev)
+        ax.plot(x, cat_ba_traj, '-', linewidth=linewidth,
+                label='{} Balanced Accuracy'.format(sel_cat), c='black')
+        ax.spines['top'].set_visible(False)
+        ax2.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off')
+        ax2.tick_params(axis='both', which='both', top='off')
+        ##########################################################################
+        # calc Y_thr (so that annotations are made only for probes with y hgiher than y_thr)
+        maxperc, max_num_probes = 95, 75
+        percentile = max(85, maxperc * len(sel_probes) /max_num_probes)
+        num_trained_blocks = len(cat_ba_traj) * self.save_ev  # in case model has not competed training
+        y_thr = np.percentile([self.probe_cf_traj_dict[probe][:num_trained_blocks][-1]
+                               for probe in sel_probes], percentile)
+        ##########################################################################
+        # plot cf
+        for probe in sel_probes:
+            probe_cf_traj_all_blocks = self.probe_cf_traj_dict[probe]
+            probe_cf_traj = probe_cf_traj_all_blocks[:num_trained_blocks]
+            x = range(len(probe_cf_traj))
+            ax2.plot(x, probe_cf_traj, '--', linewidth=linewidth, c=next(palette))
+            ##########################################################################
+            # annotate
+            y = probe_cf_traj[-1]
+            if y > y_thr:  # annotate only those targets with y higher than y_thr to reduce clutter
+                plt.annotate(probe, xy=(x[-1], y), xytext=(-30, -10), textcoords='offset points',
+                             va='center', fontsize=leg_font_size, bbox=dict(boxstyle='round', fc='w'))
+        ##########################################################################
+        ax.legend(fontsize=leg_font_size, loc='upper left')
         ##########################################################################
         return fig
 
 
     def make_test_pp_traj_fig(self, is_title=False):
         ##########################################################################
+        # load data
+        test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
+        ##########################################################################
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
         sns.set_style('white')
-        ##########################################################################
-        # load test_pp from trajstore
-        test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -234,18 +292,16 @@ class TrajDataBase:
         # axes
         for n in range(2):
             axarr[n].set_ylabel('Test Perplexity Score', fontsize=ax_font_size)
-            axarr[n].plot(range(0, len(test_pp_traj) * self.save_ev, self.save_ev), test_pp_traj,
-                    '-', linewidth=linewidth)
-            ##########################################################################
-            # Hide the right and top spines and ticks
             axarr[n].spines['right'].set_visible(False)
             axarr[n].spines['top'].set_visible(False)
             axarr[n].tick_params(axis='both', which='both', top='off', right='off')
-            ##########################################################################
-            # second subplot is zoomed in
             if n == 1:
                 axarr[n].set_ylim([0, 100])
                 axarr[n].set_xlabel('Training Blocks', fontsize=ax_font_size)
+            ##########################################################################
+            # plot
+            axarr[n].plot(range(0, len(test_pp_traj) * self.save_ev, self.save_ev), test_pp_traj,
+                          '-', linewidth=linewidth)
         ##########################################################################
         # move axes closer
         plt.tight_layout()
@@ -279,21 +335,18 @@ class TrajDataBase:
         ax.set_ylim([50, 100])
         ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
         ax.set_ylabel('Average Balanced Accuracy', fontsize=ax_font_size)
-        ax.plot(range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev), avg_token_ba_traj,
-                '-', linewidth=linewidth)
-        ##########################################################################
-        # Hide the right and top spines and ticks
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
+        ##########################################################################
+        # plot
+        ax.plot(range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev), avg_token_ba_traj,
+                '-', linewidth=linewidth)
         ##########################################################################
         # move axes closer together
         plt.tight_layout()
         ##########################################################################
         return fig
-
-
-
 
 
 

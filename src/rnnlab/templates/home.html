@@ -266,8 +266,9 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
-            {% if token_ba_trajectories_img %}
-                <img src="data:image/png;base64,{{ token_ba_trajectories_img }}">
+            {% if token_ba_trajs_img %}
+                <img src="data:image/png;base64,{{ token_ba_trajs_img }}">
+                <img src="data:image/png;base64,{{ cfreq_traj_img }}">
             {% else %}
                 <h3 style="color:red">Please select category</h3>
             {% endif %}
@@ -286,6 +287,7 @@
             {% endif %}
         </div>
     </div>
+
 
 
 

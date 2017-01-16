@@ -104,9 +104,10 @@ def home():
     cat_cluster_img = None
     cat_sim_dh_img = None
     neighbors_table_img = None
-    token_ba_trajectories_img = None
+    token_ba_trajs_img = None
     test_pp_traj_img = None
     avg_token_ba_traj_img = None
+    cfreq_traj_img = None
     probes = [DEFAULTS['sel_probe']]
     ##########################################################################
     # load log entries and any requests
@@ -175,9 +176,9 @@ def home():
             if sel_cat != DEFAULTS['sel_cat']:
                 ##########################################################################
                 # make probes to select from
-                probes += database.get_probes_from_cat(sel_cat)
+                probes += database.cat_probe_list_dict[sel_cat]
                 probes.sort()
-                sel_probes = probes[1:] # remove 'Select'
+                sel_probes = probes[1:] # removes 'Select'
                 ##########################################################################
                 # make neighbors_table_img
                 print 'Making neighbors_table_img'
@@ -196,12 +197,20 @@ def home():
                 cat_cluster_img = base64.b64encode(figfile.getvalue())
                 ##########################################################################
                 # make token_ba trajectories_fig
-                print 'Making token_ba_trajectories_img for probes in "{}"'.format(sel_cat)
-                fig = trajdatabase.make_token_ba_trajectories_fig(sel_probes, sel_cat)
+                print 'Making token_ba_trajs_img for probes in "{}"'.format(sel_cat)
+                fig = trajdatabase.make_token_ba_trajs_fig(sel_probes, sel_cat)
                 figfile = StringIO.StringIO()
                 fig.savefig(figfile, format='png')
                 figfile.seek(0)
-                token_ba_trajectories_img = base64.b64encode(figfile.getvalue())
+                token_ba_trajs_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make cfreq_traj_fig
+                print 'Making cfreq_traj_img for probes in "{}"'.format(sel_cat)
+                fig = trajdatabase.make_cfreq_traj_fig(sel_probes, sel_cat)
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                cfreq_traj_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
             if sel_probe != DEFAULTS['sel_probe']:
                 ##########################################################################
@@ -257,9 +266,10 @@ def home():
                            cat_cluster_img=cat_cluster_img,
                            cat_sim_dh_img=cat_sim_dh_img,
                            neighbors_table_img=neighbors_table_img,
-                           token_ba_trajectories_img=token_ba_trajectories_img,
+                           token_ba_trajs_img=token_ba_trajs_img,
                            test_pp_traj_img=test_pp_traj_img,
-                           avg_token_ba_traj_img=avg_token_ba_traj_img)
+                           avg_token_ba_traj_img=avg_token_ba_traj_img,
+                           cfreq_traj_img=cfreq_traj_img)
 
 
 @app.route('/template/', methods=['GET', 'POST']) # TODO template for fig

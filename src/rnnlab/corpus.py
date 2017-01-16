@@ -25,25 +25,30 @@ class Corpus(object):
         self.vocab_file_name = vocab_file_name # if specified, this is the list of tokens to include in vocab
         self.freq_cutoff = freq_cutoff # use this if no vocab file specified, None includes all tokens
         self.probes_name = probes_name # list of tokens to use for analysis after training
-        self.corpus_content = self.get_corpus_content() # loads corpus content from file specified by corpus name
-        self.num_total_docs = len(self.corpus_content)
+        self.corpus_content, self.num_total_docs = self.get_corpus_content()
+        ##########################################################################
+        # make instance variables
         self.test_doc_ids, self.train_doc_ids = self.split_corpus()
         self.num_train_docs, self.num_test_docs = len(self.train_doc_ids), len(self.test_doc_ids)
         self.token_list, self.token_id_dict, self.probe_list,\
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.make_token_data()
+        self.probe_cf_traj_dict = self.make_probe_cf_traj_dict()
 
 
     def get_corpus_content(self):
         ##########################################################################
         path = os.path.join(self.data_dir, self.corpus_name)
         file_name = 'corpus.txt'
-        corpus_content = []
         print 'Loading corpus from {}'.format(path)
+        ##########################################################################
+        # load corpus
+        corpus_content = []
         with open(os.path.join(path, file_name),'r') as f:
             for doc in f.readlines():
                 corpus_content.append(doc.strip().strip('\n'))
+        num_total_docs = len(corpus_content)
         ##########################################################################
-        return corpus_content
+        return corpus_content, num_total_docs
 
 
     def split_corpus(self, min=70, save_ev=10): #TODO get save_ev from config
@@ -59,6 +64,7 @@ class Corpus(object):
                 break
             else:
                 min += 1
+        ##########################################################################
         num_test_docs = self.num_total_docs - num_train_docs
         print 'Split corpus into {} train docs and {} test docs'.format(num_train_docs, num_test_docs)
         ##########################################################################
@@ -117,6 +123,7 @@ class Corpus(object):
                 x[i, :] = doc_token_ids[(batch_start + i): (batch_start + i) + bptt_steps + 1]
             y = x[:, -1]
             x_shortened = x[:, :-1]
+            ##########################################################################
             yield (x_shortened, y)
 
 
@@ -228,29 +235,25 @@ class Corpus(object):
         return tf_idf_corr_curve[:max_data_points]
 
 
-    def get_cum_target_freqs(self): # TODO make this method work
+    def make_probe_cf_traj_dict(self): # dict key is probe and value is numpy array with cf traj
         ##########################################################################
-        # get docs
-        path = os.path.join(self.data_dir, self.corpus_name)
-        file_name = 'corpus.txt'
-        with open(os.path.join(path, file_name), 'r') as f:
-            docs = f.readlines()
-        # make dict to collect freq data
-        doc_ids = range(0, stop_doc + 1, 1)
-        fd = {doc_id: e_token_freq_dict.copy() for doc_id in doc_ids}
-        # get cum freqs for each doc up to stop_doc
-        cum_target_freqs = []
-        for doc_id in doc_ids:
-            # count
-            for t in docs[doc_id].split():
-                if t in e_token_list:
-                    fd[doc_id][t] += 1
-            # sum count over last weights_interval docs
-            if doc_id % save_ev == 0:
-                cum_target_freq = int(np.sum([v[token] for k, v in zip(fd.keys(), fd.values()) if k < doc_id]))
-                cum_target_freqs.append(cum_target_freq)
+        print 'Making probe cumfreq trajectory dict...'
         ##########################################################################
-        return cum_target_freqs
+        # make dict
+        probe_cf_traj_dict = {probe: np.zeros(self.num_train_docs) for probe in self.probe_list}
+        ##########################################################################
+        # collect probe frequency
+        for block_name, doc_id in self.gen_train_block_name_and_id(epochs=1, shuffle=False):
+            doc = self.corpus_content[doc_id].split()
+            traj_id = int(block_name) - 1
+            for probe in doc:
+                if probe in self.probe_id_dict:  probe_cf_traj_dict[probe][traj_id] += 1
+        ##########################################################################
+        # calc cumulative sum
+        for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
+            probe_cf_traj_dict[probe] = np.cumsum(probe_freq_traj)
+        ##########################################################################
+        return probe_cf_traj_dict
 
 
 

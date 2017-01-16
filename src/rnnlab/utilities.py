@@ -7,12 +7,18 @@ def load_token_data(runs_dir, model_name):
     path = os.path.join(runs_dir, model_name, 'Token_Data')
     file_name = 'token_data.npz'.format(model_name)
     npzfile = np.load(os.path.join(path, file_name))
+    ##########################################################################
+    # load
     token_list, token_id_dict = npzfile['token_list'].tolist(), npzfile['token_id_dict'].item()
     probe_list, probe_id_dict = npzfile['probe_list'].tolist(), npzfile['probe_id_dict'].item()
     probe_cat_dict = npzfile['probe_cat_dict'].item()
     cat_list = npzfile['cat_list'].tolist()
+    cat_probe_list_dict = {cat: [probe for probe in probe_list if probe_cat_dict[probe] == cat]
+                           for cat in cat_list}
+    probe_cf_traj_dict = npzfile['probe_cf_traj_dict'].item()
     ##########################################################################
-    return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
+    return token_list, token_id_dict, probe_list, probe_id_dict,\
+           probe_cat_dict, cat_list, cat_probe_list_dict, probe_cf_traj_dict
 
 
 

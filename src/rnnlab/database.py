@@ -33,12 +33,16 @@ class DataBase:
         self.model_name = configs_dict['model_name']
         self.block_name = block_name
         self.df = df
-        self.token_list, self.token_id_dict, self.probe_list, \
-        self.probe_id_dict, self.probe_cat_dict, self.cat_list = load_token_data(runs_dir, self.model_name)
+        ##########################################################################
+        # load token data
+        self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict,\
+        self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict, \
+        self.probe_cf_traj_dict = load_token_data(runs_dir, self.model_name)
         ##########################################################################
         # calc instance variables
         self.all_acts_df = self.make_all_acts_df()
         self.probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
+
 
     def add_col(self,col_name, col_data):
         ##########################################################################
@@ -59,20 +63,10 @@ class DataBase:
         print 'Saved dataframe with complevel {}'.format(complevel)
 
 
-
-    def make_cat_probe_list_dict(self):
-        ##########################################################################
-        cat_probe_list_dict = {cat: [probe for probe in self.probe_list
-                                     if self.probe_cat_dict[probe] == cat]
-                               for cat in self.cat_list}
-        ##########################################################################
-        return cat_probe_list_dict
-
-
     def get_ba_breakdown_data(self):
         ##########################################################################
         # make df_cat_and_ba
-        df_cat_ba = self.df[['cat', 'token_ba']].drop_duplicates().groupby('cat', sort=False).mean()
+        df_cat_ba = self.df[['cat', 'probe', 'token_ba']].drop_duplicates().groupby('cat', sort=False).mean()
         ##########################################################################
         # make cats_sorted_by_ba
         tuples = [tuple for tuple in df_cat_ba.itertuples()]
@@ -82,18 +76,14 @@ class DataBase:
         # make cat_ba_dict (this is not really needed)
         cat_ba_dict = df_cat_ba.to_dict()['token_ba']
         ##########################################################################
-        # make cat_probe_list_dict
-        cat_probe_list_dict = self.make_cat_probe_list_dict()
-        ##########################################################################
         # make token_ba_row
         token_ba_row = self.df[['probe','token_ba']].groupby('probe').first()['token_ba'].as_matrix()
         ##########################################################################
-        return cats_sorted_by_ba, cat_ba_dict, cat_probe_list_dict, token_ba_row
+        return cats_sorted_by_ba, cat_ba_dict, token_ba_row
 
 
     def make_token_acts_df(self, sel_probe):
         ##########################################################################
-        # token_ids = self.df[self.df['probe'] == sel_probe].index.tolist()
         sel_probe = sel_probe
         token_ids = self.df.query("probe == @sel_probe").index.tolist()
         token_acts_df = self.df.loc[token_ids].filter(regex='H')
@@ -105,7 +95,6 @@ class DataBase:
         ##########################################################################
         print 'Making cat_acts_mat using "{}"...'.format(agg_fn)
         ##########################################################################
-        # df_cat = self.df[self.df['cat'] == sel_cat]
         sel_cat = sel_cat
         df_cat = self.df.query("cat == @sel_cat")
         cat_acts_df = df_cat.groupby('probe', sort=True).mean().filter(regex='H')  # TODO make sure this works
@@ -134,7 +123,7 @@ class DataBase:
         # inits
         num_probes = len(self.probe_list)
         num_cats = len(self.cat_list)
-        cat_sim_dict = {}
+        # cat_sim_dict = {}
         ##########################################################################
         # make category sim dict
         cat_sim_dict = {cat_outer : {cat_inner : [] for cat_inner in self.cat_list}
@@ -180,8 +169,18 @@ class DataBase:
         # get cat for each probe for plotting
         acts_cats = [self.probe_cat_dict[probe] for probe in self.probe_list]
         ##########################################################################
+        # fig settings
+        figsize = (12, 8)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 10
+        label_fontsize = 4
+        linewidth = 2.0
+        ##########################################################################
         # fig
         fig, axarr = plt.subplots(1, 2, figsize=(12, 8))
+        fig_name = '{} Block {} Acts Dimensionality Reduction'.format(self.model_name, self.block_name)
+        if is_titled: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axis
         for n, x in enumerate([acts_2d_svd, acts_2d_tsne]):
@@ -213,14 +212,6 @@ class DataBase:
         return fig
 
 
-    def get_probes_from_cat(self, cat):
-        ##########################################################################
-        cat_ids =  self.df[self.df['cat'] == cat].index.tolist()
-        probes = self.df.loc[cat_ids]['probe'].astype(str).unique().tolist()
-        ##########################################################################
-        return probes
-
-
     def make_token_corcoeff_hist_fig(self, probe, bins=100, is_titled=False):
         ##########################################################################
         token_acts_df = self.make_token_acts_df(probe)
@@ -246,7 +237,7 @@ class DataBase:
         ax.set_xlabel('Pearson Correlation Coefficient', fontsize=ax_font_size)
         ax.set_ylabel('Number of observations', fontsize=ax_font_size)
         ax.hist(corr_mat, bins)
-        # ax.set_xlim([0, 1]) # this has to work with histogram bin data i think
+        ax.set_xlim([0, 1]) # this doesn't work well before model has trained
         ##########################################################################
         # Hide the right and top spines
         ax.spines['right'].set_visible(False)
@@ -275,8 +266,7 @@ class DataBase:
     def make_neighbors_table_fig(self, cat, num_neighbors=10, num_trunc_cols=5, is_titled=False):
         ##########################################################################
         # get col_labels
-        cat_probe_list_dict = self.make_cat_probe_list_dict()
-        col_labels = cat_probe_list_dict[cat]
+        col_labels = self.cat_probe_list_dict[cat]
         ##########################################################################
         # inits
         neighbors_mat_list = []
@@ -319,12 +309,12 @@ class DataBase:
             axarr[n].xaxis.set_visible(False) # hide to show table only
             axarr[n].yaxis.set_visible(False)
             axarr[n].axis('off')
+            ##########################################################################
+            # table sizing
             the_table = axarr[n].table(cellText=neighbors_mat, colLabels=col_labels_list[n], loc='center')
-
             table_props = the_table.properties()
             table_cells = table_props['child_artists']
             for cell in table_cells: cell.set_height(0.1)
-
         ##########################################################################
         return fig
 
@@ -550,10 +540,10 @@ class DataBase:
         return fig
 
 
-    def make_ba_breakdown_fig(self, is_titled=False): # TODO put this next to scatter breakdown
+    def make_ba_breakdown_fig(self, is_titled=False):
         ##########################################################################
         # make cat_probe_list_dict and cats_sorted_by_ba
-        cats_sorted_by_ba, cat_ba_dict, cat_probe_list_dict, token_ba_row = self.get_ba_breakdown_data()
+        cats_sorted_by_ba, cat_ba_dict, token_ba_row = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
         figsize = (14, 8)
@@ -576,7 +566,7 @@ class DataBase:
         ##########################################################################
         # plot
         for cat_id, cat in enumerate(cats_sorted_by_ba):
-            cat_probe_list = cat_probe_list_dict[cat]
+            cat_probe_list = self.cat_probe_list_dict[cat]
             cat_probe_ids = [self.probe_list.index(e_token) for e_token in cat_probe_list]
             xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_row[cat_probe_ids]
             ax.plot(xs, ys, 'b.', alpha=1)
@@ -587,7 +577,7 @@ class DataBase:
     def make_ba_breakdown_scatter_fig(self, is_titled=False):
         ##########################################################################
         # make cat_probe_list_dict and cats_sorted_by_ba
-        cats_sorted_by_ba, cat_ba_dict, cat_probe_list_dict, token_ba_row = self.get_ba_breakdown_data()
+        cats_sorted_by_ba, cat_ba_dict, token_ba_row = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
         figsize = (14, 8)
@@ -625,14 +615,14 @@ class DataBase:
             ##########################################################################
             # plot points
             annotated_y_ints_long_words_curr_cat = []
-            cat_probe_list = cat_probe_list_dict[cat]
+            cat_probe_list = self.cat_probe_list_dict[cat]
             cat_probe_ids = [self.probe_list.index(e_token) for e_token in cat_probe_list]
             xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_row[cat_probe_ids]
             ax.plot(xs, ys, 'b.', alpha=0) # this needs to be plot for annotation to work
             ##########################################################################
             # annotate points
             annotated_y_ints = []
-            for x,y, target in sorted(zip(xs, ys, cat_probe_list_dict[cat])):
+            for x,y, target in sorted(zip(xs, ys, self.cat_probe_list_dict[cat])):
                 y_int = int(y)
                 # if annotation coordinate exists or is affected by long word from previous cat, skip to next target
                 if not y_int in annotated_y_ints and y_int not in annotated_y_ints_long_words_prev_cat:
