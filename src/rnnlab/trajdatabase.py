@@ -331,7 +331,7 @@ class TrajDataBase:
         if is_title: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axis
-        ax.set_ylim([50, 100])
+        ax.set_ylim([50, 75])
         ax.set_xlabel('Training Block', fontsize=ax_font_size)
         ax.set_ylabel('Average Balanced Accuracy', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
@@ -348,7 +348,7 @@ class TrajDataBase:
         return fig
 
 
-    def make_ba_pp_mw_corr_fig(self, window=10, is_title=False):
+    def make_ba_pp_window_corr_fig(self, window=20, is_title=False):
         ##########################################################################
         # load data
         avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
@@ -356,8 +356,9 @@ class TrajDataBase:
         test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
         s2 = pd.Series(test_pp_traj)
         ##########################################################################
-        # moving window corr
+        #  window corr
         ba_pp_mw_corr = s1.rolling(window=window).corr(s2)
+        ba_pp_ew_corr = s1.expanding().corr(s2)
         ##########################################################################
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
@@ -376,18 +377,24 @@ class TrajDataBase:
         if is_title: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axis
-        ax.set_ylim([0, 1])
-        ax.set_xlabel('Training Block)'.format(window), fontsize=ax_font_size)
+        ax.set_ylim([-1, 1])
+        ax.set_xlabel('Training Block'.format(window), fontsize=ax_font_size)
         ax.set_ylabel('Correlation Coefficient', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
         ##########################################################################
+        # plot line through y=0
+        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
+        ax.plot(x, [0]*len(x), '--', c='gray', linewidth=linewidth)
+        ##########################################################################
         # plot
-        num_total_windows = len(ba_pp_mw_corr)
-        x = range(num_total_windows)
+        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
         ax.plot(x, ba_pp_mw_corr, '-', linewidth=linewidth,
-                label='moving window corr ({} blocks per wind)'.format(window))
+                label='mw-corr ({} blocks per window) between balAcc and test-pp'.format(window))
+        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
+        ax.plot(x, ba_pp_ew_corr, '-', linewidth=linewidth,
+                label='ew-corr ({} blocks per window) between balAcc and test-pp'.format(window))
         ##########################################################################
         ax.legend(fontsize=leg_font_size, loc='best')
         ##########################################################################

@@ -144,7 +144,7 @@ def home():
             ##########################################################################
             # make avg_token_ba_traj_img
             print 'Making ba_pp_mw_corr_img'
-            fig = trajdatabase.make_ba_pp_mw_corr_fig()
+            fig = trajdatabase.make_ba_pp_window_corr_fig()
             figfile = StringIO.StringIO()
             fig.savefig(figfile, format='png')
             figfile.seek(0)
