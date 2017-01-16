@@ -9,7 +9,7 @@ from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import linkage, dendrogram
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
-from rnnhelper import load_rc
+from rnnlab import load_rc
 from utilities import calc_probe_sim_mat, load_token_data
 import pandas as pd
 

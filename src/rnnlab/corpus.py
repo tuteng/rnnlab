@@ -13,12 +13,8 @@ class Corpus(object):
 
     def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None):
         ##########################################################################
-        # define directories
-        dev_path = os.path.join('rnnlab','data')
-        if os.path.isdir(dev_path):
-            self.data_dir = dev_path
-        else:
-            self.data_dir = os.path.join('data')
+        # define data dir
+        self.data_dir = os.path.join(os.path.dirname(__file__), 'data')
         ##########################################################################
         # assign instance variables
         self.corpus_name = corpus_name
@@ -163,7 +159,7 @@ class Corpus(object):
         ##########################################################################
         # add probes to token_list, if not already in token_list
         path = os.path.join(self.data_dir, 'probes')
-        probe_file_name = '{}_probes.txt'.format(self.probes_name)
+        probe_file_name = '{}.txt'.format(self.probes_name)
         with open(os.path.join(path, probe_file_name), 'r') as f:
             for line in f:
                 data = (line.strip().strip('\n').strip()).split() # TODO probe list is not made in alphabetical order, problem?

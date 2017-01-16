@@ -1,7 +1,7 @@
 
 
 import tensorflow as tf
-from rnnhelper import load_rc
+from rnnlab import load_rc
 
 
 class LSTM(object):

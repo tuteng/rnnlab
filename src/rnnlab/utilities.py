@@ -1,3 +1,6 @@
+import csv
+import sys
+
 import numpy as np
 import os
 
@@ -195,3 +198,72 @@ def calculate_dprime(hits, misses, fas, crs):
     ad = norm.cdf(d_prime / sqrt(2))
     ##########################################################################
     return d_prime, beta, c, ad
+
+
+def gen_user_configs():
+    ##########################################################################
+    # define directories
+    working_dir = os.path.dirname(os.path.abspath(__file__))
+    rnn_dir = os.path.abspath(working_dir + os.sep + '..')
+    user_configs_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_user_configs.csv'))
+    if not os.path.isfile(user_configs_path): sys.exit('rnnlab: {} not found'.format(user_configs_path))
+    ##########################################################################
+    # check if model has already been trained for given user_config
+    # TODO it would be cool if given a set of configurations, a unique id could be assigned
+    # TODO which would alert the user anytime they run a configuration that has been run in the past
+    ##########################################################################
+    # check that there are no duplicated configs
+    reader = csv.reader(open(os.path.join(rnn_dir, user_configs_path), 'r'))
+    rows = []
+    for n, row in enumerate(reader):
+        if n != 0: rows.append(tuple(row))
+    if len(set(rows)) != len(rows): sys.exit('rnnlab: Duplicate configs detected in {}'.format(user_configs_path))
+    ##########################################################################
+    # warn user
+    if len(rows) > 1 : print 'WARNING: rnnlab does not remember which user_configurations may have been used ' \
+                            'for training in the past. All configurations will be used.'
+    ##########################################################################
+    # gen user_configs (tuple)
+    reader = csv.reader(open(os.path.join(rnn_dir, user_configs_path), 'r'))
+    for n, row in enumerate(reader):
+        if n == 0:
+            configs_names = row
+        else:
+            user_configs = [(name, config) for name, config in zip(configs_names, row)]
+            ##########################################################################
+            yield user_configs
+
+
+def load_rc(string): # .rnnlabrc file should specify gpu/cpu and runs_dir path
+    ##########################################################################
+    # load rc from file
+    rc = None
+    with open(os.path.join(os.path.expanduser('~'),'.rnnlabrc'), 'r') as f:
+        for line in f.readlines():
+            if line.startswith(string):
+                rc = line.split()[1]
+    if rc is None:
+        sys.exit('rnnlab: Did not find "{}" in .rnnlabrc'.format(rc))
+    ##########################################################################
+    return rc
+
+
+def get_childes_data():
+    ##########################################################################
+    print 'Downloading childes data to {}...'.format(os.getcwd())
+    ##########################################################################
+    import requests
+    if not os.path.isdir('data'): os.mkdir('data')
+    os.chdir('data')
+    ##########################################################################
+    for dir, file_names in [('childes2_3YO', ['vocab_3YO_4238.txt', 'corpus.txt']), ('probes',['semantic.txt'])]:
+        if not os.path.isdir(dir): os.mkdir(dir)
+        os.chdir(dir)
+        print 'Donwloading {}'.format(','.join(file_names))
+        for file_name in file_names:
+            r = requests.get('https://raw.githubusercontent.com/phueb/rnnlab/master/src/rnnlab/data/{}/{}'
+                             .format(dir, file_name))
+            with open(file_name,'w') as f:
+                f.write(r.text)
+        os.chdir('..')
+    os.chdir('..')

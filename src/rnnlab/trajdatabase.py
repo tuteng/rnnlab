@@ -3,7 +3,7 @@ import numpy as np
 import multiprocessing as mp
 import matplotlib.pyplot as plt
 from utilities import calc_ba_mats
-from rnnhelper import load_rc
+from rnnlab import load_rc
 from utilities import calc_probe_sim_mat, load_token_data
 import pandas as pd
 

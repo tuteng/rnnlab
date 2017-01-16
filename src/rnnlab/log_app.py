@@ -8,7 +8,7 @@ import numpy as np
 import StringIO
 from database import DataBase
 from trajdatabase import TrajDataBase
-from rnnhelper import load_rc
+from rnnlab import load_rc
 
 ##########################################################################
 app = Flask(__name__)

@@ -1,4 +1,4 @@
-from rnnhelper import load_rc
+from rnnlab import load_rc
 import tensorflow as tf
 import numpy as np
 import math, time, os, socket
