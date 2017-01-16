@@ -182,7 +182,7 @@ class TrajDataBase:
         if is_title: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axes
-        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_xlabel('Training Block', fontsize=ax_font_size)
         ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
@@ -227,7 +227,7 @@ class TrajDataBase:
         if is_titled: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axes
-        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_xlabel('Training Block', fontsize=ax_font_size)
         ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
         ax.set_ylim([0,100])
         ax2 = ax.twinx()
@@ -295,8 +295,8 @@ class TrajDataBase:
             axarr[n].spines['top'].set_visible(False)
             axarr[n].tick_params(axis='both', which='both', top='off', right='off')
             if n == 1:
-                axarr[n].set_ylim([0, 100])
-                axarr[n].set_xlabel('Training Blocks', fontsize=ax_font_size)
+                axarr[n].set_ylim([0, 200])
+                axarr[n].set_xlabel('Training Block', fontsize=ax_font_size)
             ##########################################################################
             # plot
             axarr[n].plot(range(0, len(test_pp_traj) * self.save_ev, self.save_ev), test_pp_traj,
@@ -332,7 +332,7 @@ class TrajDataBase:
         ##########################################################################
         # axis
         ax.set_ylim([50, 100])
-        ax.set_xlabel('Training Blocks', fontsize=ax_font_size)
+        ax.set_xlabel('Training Block', fontsize=ax_font_size)
         ax.set_ylabel('Average Balanced Accuracy', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
@@ -348,7 +348,7 @@ class TrajDataBase:
         return fig
 
 
-    def make_ba_pp_mw_corr_fig(self, window=5, is_title=False):
+    def make_ba_pp_mw_corr_fig(self, window=10, is_title=False):
         ##########################################################################
         # load data
         avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
@@ -367,7 +367,7 @@ class TrajDataBase:
         figsize = (12, 4)
         title_font_size = 16
         ax_font_size = 16
-        leg_font_size = 10
+        leg_font_size = 12
         linewidth = 2.0
         ##########################################################################
         # fig
@@ -377,16 +377,21 @@ class TrajDataBase:
         ##########################################################################
         # axis
         ax.set_ylim([0, 1])
-        ax.set_xlabel('Training Blocks Windows ({} blocks per windw)'.format(window), fontsize=ax_font_size)
+        ax.set_xlabel('Training Block)'.format(window), fontsize=ax_font_size)
         ax.set_ylabel('Correlation Coefficient', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
         ##########################################################################
         # plot
-        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
-        ax.plot(x, ba_pp_mw_corr, '-', linewidth=linewidth)
+        num_total_windows = len(ba_pp_mw_corr)
+        x = range(num_total_windows)
+        ax.plot(x, ba_pp_mw_corr, '-', linewidth=linewidth,
+                label='moving window corr ({} blocks per wind)'.format(window))
         ##########################################################################
+        ax.legend(fontsize=leg_font_size, loc='best')
+        ##########################################################################
+
         # move axes closer together
         plt.tight_layout()
         ##########################################################################

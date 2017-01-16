@@ -36,20 +36,19 @@ Example Script:
 
 This script imports ``gen_user_configs`` which loads the information contained in
 the configurations file created above. In combination with a ``for`` loop, multiple
-configurations can be loaded for sequential training of multiple models. ``get_childes_data``
-downloads the default corpus from the ``rnnlab`` github repository.
+configurations can be loaded for sequential training of multiple models.
 
 We also import the ``RNN`` class, which, when instantiated, creates a Tensorflow graph of the user-specified
 RNN architecture. This class contains a ``train`` ing method which is used to train the model.
+
+``rnnlab`` comes packaged with the corpus **childes2_3YO** so that you can test your implementation right out
+of the box. Just make sure you specify the name of the corpus in **rnnlab_user_configs.csv** .
 
 .. -code-begin-
 
 .. code-block:: pycon
 
-   >>> from rnnlab import gen_user_configs, get_childes_data
-   >>> from rnnlab import RNN
-   >>>
-   >>> get_childes_data() # downloads childes corpus from github
+   >>> from rnnlab import gen_user_configs, RNN
    >>>
    >>> for user_configs in gen_user_configs():
    >>>     myrnn = RNN('lstm', user_configs) # try 'srn', ''irnn', 'scrn'
