@@ -26,7 +26,7 @@ DEFAULTS = {'block_names': ['0001','0050', '1000', '2000', '2800'],
             'sel_block_name': 'Select',
             'sel_cat': 'Select',
             'sel_probe': 'Select',
-            'headers': ['model_name', 'learning_rate', 'num_iterations', 'best_token_ba'],
+            'headers': ['model_name', 'learning_rate', 'bptt_steps', 'num_iterations', 'best_token_ba'],
             'allow_incomplete' : True}
 ##########################################################################
 log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))

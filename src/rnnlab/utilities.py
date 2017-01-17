@@ -24,33 +24,42 @@ def load_token_data(runs_dir, model_name):
            probe_cat_dict, cat_list, cat_probe_list_dict, probe_cf_traj_dict
 
 
+
+def write_to_bashrc(bashrc, alias):
+    ##########################################################################
+    with open(bashrc, 'r') as f:
+        lines = f.readlines()
+        if alias not in lines:
+            out = open(bashrc, 'a')
+            out.write(alias)
+            out.close()
+            string_to_print = 'rnnlab: Created bash alias. Restart bash and type "rnnlab" to start browser app'
+        else:
+            string_to_print = 'rnnlab: Type "rnnlab" to start browser app'
+    ##########################################################################
+    print '========================================================================='
+    print string_to_print
+    print '========================================================================='
+
+
 def make_rnnlab_alias(app_dirname):
     ##########################################################################
     alias = 'alias rnnlab="python {}/example_log.py"\n'.format(app_dirname)
     homefolder = os.path.expanduser('~')
     ##########################################################################
     try: # works on ubuntu
-        bashrc = os.path.abspath('{}/.bashrc'.format(homefolder))
-        with open(bashrc, 'r') as f:
-            lines = f.readlines()
-            if alias not in lines:
-                out = open(bashrc, 'a')
-                out.write(alias)
-                out.close()
-    except IOError: # this works on mac
-        bashrc = os.path.abspath('{}/.bash_profile'.format(homefolder))
-        with open(bashrc, 'r') as f:
-            lines = f.readlines()
-            if alias not in lines:
-                out = open(bashrc, 'a')
-                out.write(alias)
-                out.close()
-    else:
-
+        bash_path_ubuntu = os.path.abspath('{}/.bashrc'.format(homefolder))
+        write_to_bashrc(bash_path_ubuntu, alias)
+    except IOError: # works on mac
+        bash_path_mac = os.path.abspath('{}/.bash_profile'.format(homefolder))
+        write_to_bashrc(bash_path_mac, alias)
+    ##########################################################################
+    except:
+        print sys.exc_info()[0]
         print 'Could not create bash alias for running browser app. To start it, please type "python {}"'\
             .format(os.path.join(app_dirname, 'example_log.py'))
-    ##########################################################################
-    print 'Created bash alias. Restart bash and type "rnnlab" to start browser app'
+
+
 
 
 
