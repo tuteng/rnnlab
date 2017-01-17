@@ -17,7 +17,7 @@ from bokeh.embed import components
 ##########################################################################
 app = Flask(__name__)
 ##########################################################################
-DEFAULTS = {'block_names': ['Select', '0001','0050', '1000', '2000', '2800'],
+DEFAULTS = {'block_names': ['0001','0050', '1000', '2000', '2800'],
             'cats': ['Select','BODY', 'KITCHEN', 'MAMMAL', 'FAMILY', 'TOYS', 'BIRD',
                        'CLOTHING', 'NUMBERS','FURNITURE', 'MUSIC', 'INSECT', 'DAYS',
                        'TIMES', 'HOUSEHOLD', 'BATHROOM','DESSERT', 'TOOLS', 'ELECTRONICS',
@@ -31,6 +31,19 @@ DEFAULTS = {'block_names': ['Select', '0001','0050', '1000', '2000', '2800'],
 ##########################################################################
 log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
 ##########################################################################
+
+
+def get_trained_block_names(model_name):
+    ##########################################################################
+    runs_dir = os.path.abspath(load_rc('runs_dir'))
+    path = os.path.join(runs_dir, model_name, 'Data_Frame')
+    ##########################################################################
+    trained_block_names = ['Select']
+    for b in DEFAULTS['block_names']:
+        if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(b))):
+            trained_block_names.append(b)
+    ##########################################################################
+    return trained_block_names
 
 
 def get_requests():
@@ -107,6 +120,7 @@ def home():
         </script>
         """
     probes = [DEFAULTS['sel_probe']]
+    block_names = DEFAULTS['block_names']
     acts_2d_img = None
     token_acts_dh_img = None
     token_corcoeff_hist_img = None
@@ -131,6 +145,9 @@ def home():
         ##########################################################################
         # if not model_name selected, select first as default
         if not sel_model_name: sel_model_name = log_entries[0][0]
+        ##########################################################################
+        # only display trained block_names in dropdown
+        block_names = get_trained_block_names(sel_model_name)
         ##########################################################################
         if sel_block_name != DEFAULTS['sel_block_name']:
             ##########################################################################
@@ -273,7 +290,7 @@ def home():
                            log_entries=log_entries,
                            headers=headers,
                            log_mtime=get_log_mtime(),
-                           block_names=DEFAULTS['block_names'],
+                           block_names=block_names,
                            probes=probes,
                            cats=sorted(DEFAULTS['cats']),
                            sel_block_name=sel_block_name,
@@ -315,4 +332,4 @@ if __name__ == '__main__':
     app.run(port=5000, debug=True)
 
 def start():
-    app.run(port=5000, debug=False) # TODO this doesn't work iwth pip installation (can't find __main__ modeule in '')
+    app.run(port=5000, debug=True) # can set this to false for production

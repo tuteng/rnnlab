@@ -1,7 +1,7 @@
 from rnn import RNN
 from utilities import gen_user_configs, load_rc, get_childes_data
 
-__version__ = "2.0.5"
+__version__ = "2.0.7"
 
 __title__ = "rnnlab"
 __description__ = "Python API for training RNN Lanugage Models with Tensorflow"

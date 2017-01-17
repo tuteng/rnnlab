@@ -28,14 +28,27 @@ def make_rnnlab_alias(app_dirname):
     ##########################################################################
     alias = 'alias rnnlab="python {}/example_log.py"\n'.format(app_dirname)
     homefolder = os.path.expanduser('~')
-    bashrc = os.path.abspath('%s/.bashrc' % homefolder)
     ##########################################################################
-    with open(bashrc, 'r') as f:
-        lines = f.readlines()
-        if alias not in lines:
-            out = open(bashrc, 'a')
-            out.write(alias)
-            out.close()
+    try: # works on ubuntu
+        bashrc = os.path.abspath('{}/.bashrc'.format(homefolder))
+        with open(bashrc, 'r') as f:
+            lines = f.readlines()
+            if alias not in lines:
+                out = open(bashrc, 'a')
+                out.write(alias)
+                out.close()
+    except IOError: # this works on mac
+        bashrc = os.path.abspath('{}/.bash_profile'.format(homefolder))
+        with open(bashrc, 'r') as f:
+            lines = f.readlines()
+            if alias not in lines:
+                out = open(bashrc, 'a')
+                out.write(alias)
+                out.close()
+    else:
+
+        print 'Could not create bash alias for running browser app. To start it, please type "python {}"'\
+            .format(os.path.join(app_dirname, 'example_log.py'))
     ##########################################################################
     print 'Created bash alias. Restart bash and type "rnnlab" to start browser app'
 

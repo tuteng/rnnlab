@@ -217,7 +217,7 @@ class RNN(RNNHelper):
             header.append('best_token_ba')
             writer = csv.writer(open(self.log_path, 'w'))
             writer.writerow(header)
-            print header
+            print 'Creating rnnlab_log.csv'
             time.sleep(1)
         ##########################################################################
         # add new entry
