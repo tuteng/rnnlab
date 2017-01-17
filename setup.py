@@ -22,7 +22,7 @@ CLASSIFIERS = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 2.7",
 ]
-INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','scikit-learn','tensorflow']
+INSTALL_REQUIRES = ['numpy','matplotlib>=1.5','pandas>=0.19','scipy>=0.18','scikit-learn>=0.18','tensorflow', 'bokeh>=0.12','flask', 'seaborn']
 
 ###################################################################
 
@@ -74,5 +74,6 @@ if __name__ == "__main__":
         install_requires=INSTALL_REQUIRES,
         package_data={'rnnlab': ['data/probes/*.txt',
                                  'data/childes2_3YO/*.txt',
-                                 'data/images/*.png']},
+                                 'data/images/*.png',
+                                 'templates/*.html']},
     )

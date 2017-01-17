@@ -111,8 +111,8 @@ class TrajDataBase:
             if round(thr_end, 2) == round(thr_start, 2):  # TODO why do i have to round here?
                 break
         ##########################################################################
-        if mp.cpu_count() < num_cpus: sys.exit(
-            'rnnlab: CPU Count is < 6. Parallel calculation of token_ba may not work')
+        if mp.cpu_count() < num_cpus:
+            print 'rnnlab WARNING: CPU Count is < 6. Parallel calculation of token_ba may not work'
         else:
             print 'Calculating token ba using {} processes...'.format(num_cpus)
         ##########################################################################

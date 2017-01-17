@@ -7,6 +7,7 @@ from operator import itemgetter
 from database import DataBase
 from trajdatabase import TrajDataBase
 from rnnhelper import RNNHelper
+from utilities import make_rnnlab_alias
 
 
 class RNN(RNNHelper):
@@ -114,6 +115,10 @@ class RNN(RNNHelper):
         # make log entry
         self.make_log_entry()
         ##########################################################################
+        # make alias so user can call browser app from bash with 'rnnlab'
+        app_dirname = os.path.dirname(__file__)
+        make_rnnlab_alias(app_dirname)
+        ##########################################################################
         # create data dirs
         for dir in ['Configs', 'Weights', 'Balanced_Accuracy', 'Data_Frame',
                     'Sim_Mat', 'Classifier', 'Figures']:
@@ -175,41 +180,48 @@ class RNN(RNNHelper):
                         shutil.rmtree(os.path.join(self.runs_dir, model_name))
                         print('Deleted {} from runs dir'.format(model_name))
                     group_list.pop(0)
+
+            ##########################################################################
+            # remove log entries corresponding with models deleted above if not completed (completed data is still informative)
+            log_content = csv.reader(open(self.log_path, 'r'))
+            runs_log_content_new = []
+            for row in log_content:
+                if not 'model_name' in row:
+                    completed = int(row[-2])
+                    if completed == 1 or row[0] not in models_run_on_this_machine or row[0] not in model_names_deleted:
+                        runs_log_content_new.append(row)
+                elif 'model_name' in row:
+                    runs_log_content_new.append(row)
+            time.sleep(1)
+            with open(self.log_path, 'w') as f:
+                writer = csv.writer(f)
+                for row in runs_log_content_new:
+                    writer.writerow(row)
         ##########################################################################
         else:
-            sys.exit('rnnlab: Could not find {}.'.format(self.log_path))
-        ##########################################################################
-        # remove log entries corresponding with models deleted above if not completed (completed data is still informative)
-        log_content = csv.reader(open(self.log_path, 'r'))
-        runs_log_content_new = []
-        for row in log_content:
-            if not 'model_name' in row:
-                completed = int(row[-2])
-                if completed == 1 or row[0] not in models_run_on_this_machine or row[0] not in model_names_deleted:
-                    runs_log_content_new.append(row)
-            elif 'model_name' in row:
-                runs_log_content_new.append(row)
-        time.sleep(1)
-        with open(self.log_path, 'w') as f:
-            writer = csv.writer(f)
-            for row in runs_log_content_new:
-                writer.writerow(row)
+            print 'rnnlab WARNING: Could not find {}.'.format(self.log_path)
 
 
     def make_log_entry(self):
         ##########################################################################
-        # append model configs to log
+        # clean up dict for writing
         configs_dict = self.rnn.configs_dict.copy()
         for entry_to_pop in ['flavor', 'model_name', 'corpus_name']:
             configs_dict.pop(entry_to_pop)
-        writer = csv.writer(open(self.log_path, 'a'))
+        ##########################################################################
+        # write log header
         if not os.path.isfile(self.log_path):
             header = [str(key) for key in configs_dict.keys()]
             header.insert(0, 'model_name')
             header.append('completed')
             header.append('best_token_ba')
+            writer = csv.writer(open(self.log_path, 'w'))
             writer.writerow(header)
-            print "Writing header to log"
+            print header
+            time.sleep(1)
+        ##########################################################################
+        # add new entry
+        writer = csv.writer(open(self.log_path, 'a'))
         all_params_list = [str(configs_dict[key]) for key in configs_dict.keys()]
         all_params_list.insert(0, self.rnn.model_name)
         all_params_list.append('0')  # completed

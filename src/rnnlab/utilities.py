@@ -24,6 +24,22 @@ def load_token_data(runs_dir, model_name):
            probe_cat_dict, cat_list, cat_probe_list_dict, probe_cf_traj_dict
 
 
+def make_rnnlab_alias(app_dirname):
+    ##########################################################################
+    alias = 'alias rnnlab="python {}/example_log.py"\n'.format(app_dirname)
+    homefolder = os.path.expanduser('~')
+    bashrc = os.path.abspath('%s/.bashrc' % homefolder)
+    ##########################################################################
+    with open(bashrc, 'r') as f:
+        lines = f.readlines()
+        if alias not in lines:
+            out = open(bashrc, 'a')
+            out.write(alias)
+            out.close()
+    ##########################################################################
+    print 'Created bash alias. Restart bash and type "rnnlab" to start browser app'
+
+
 
 def calc_probe_sim_mat(all_acts_df, probe_list):
     ##########################################################################

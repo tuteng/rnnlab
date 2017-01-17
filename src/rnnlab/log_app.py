@@ -143,7 +143,7 @@ def home():
             p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover')
             p.y_range=Range1d(0, 500)
             p.xgrid.grid_line_color = None
-            p.logo = None
+            p.toolbar.logo = None
             test_pp_traj_img['script'], test_pp_traj_img['div'] = components(p)
             ##########################################################################
             # make avg_token_ba_traj_img
@@ -152,10 +152,9 @@ def home():
             p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover')
             p.y_range = Range1d(50, 80)
             p.xgrid.grid_line_color = None
-            p.logo = None
+            p.toolbar.logo = None
             avg_token_ba_traj_img['script'], avg_token_ba_traj_img['div'] = components(p)
-            print avg_token_ba_traj_img['div']
-            ##########################################################################
+            ##################################q########################################
             # make avg_token_ba_traj_img
             print 'Making ba_pp_mw_corr_img'
             fig = trajdatabase.make_ba_pp_window_corr_fig()
@@ -316,4 +315,4 @@ if __name__ == '__main__':
     app.run(port=5000, debug=True)
 
 def start():
-    app.run(port=5000, debug=True)
+    app.run(port=5000, debug=False) # TODO this doesn't work iwth pip installation (can't find __main__ modeule in '')
