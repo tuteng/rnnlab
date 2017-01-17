@@ -267,7 +267,7 @@ class TrajDataBase:
         return fig
 
 
-    def make_test_pp_traj_fig(self, is_title=False):
+    def make_test_pp_traj_fig(self, refline=None, is_title=False):
         ##########################################################################
         # load data
         test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
@@ -277,30 +277,32 @@ class TrajDataBase:
         sns.set_style('white')
         ##########################################################################
         # fig settings
-        figsize = (12, 8)
+        figsize = (12, 6)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10
         linewidth = 2.0
         ##########################################################################
         # fig
-        fig, axarr = plt.subplots(2, 1, figsize=figsize, sharex=True)
+        fig, ax = plt.subplots(figsize=figsize, sharex=True)
         fig_name = '{} Test Perplexity Trajectory'.format(self.model_name)
         if is_title: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # axes
-        for n in range(2):
-            axarr[n].set_ylabel('Test Perplexity Score', fontsize=ax_font_size)
-            axarr[n].spines['right'].set_visible(False)
-            axarr[n].spines['top'].set_visible(False)
-            axarr[n].tick_params(axis='both', which='both', top='off', right='off')
-            if n == 1:
-                axarr[n].set_ylim([0, 200])
-                axarr[n].set_xlabel('Training Block', fontsize=ax_font_size)
-            ##########################################################################
-            # plot
-            axarr[n].plot(range(0, len(test_pp_traj) * self.save_ev, self.save_ev), test_pp_traj,
-                          '-', linewidth=linewidth)
+        ax.set_ylabel('Test Perplexity Score', fontsize=ax_font_size)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
+        ax.set_xlabel('Training Block', fontsize=ax_font_size)
+        ##########################################################################
+        # plot
+        ax.plot(range(0, len(test_pp_traj) * self.save_ev, self.save_ev), test_pp_traj,
+                      '-', linewidth=linewidth)
+        ##########################################################################
+        # plot line through y=0
+        if refline is not None:
+            x = range(0, len(test_pp_traj) * self.save_ev, self.save_ev)
+            ax.plot(x, [refline] * len(x), '--', c='gray', linewidth=linewidth)
         ##########################################################################
         # move axes closer
         plt.tight_layout()
@@ -309,7 +311,7 @@ class TrajDataBase:
 
 
 
-    def make_avg_token_ba_traj_fig(self, is_title=False):
+    def make_avg_token_ba_traj_fig(self, refline=None, is_title=False):
         ##########################################################################
         # load test_pp from trajstore
         avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
@@ -319,7 +321,7 @@ class TrajDataBase:
         sns.set_style('white')
         ##########################################################################
         # fig settings
-        figsize = (12, 4)
+        figsize = (12, 6)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10
@@ -337,6 +339,11 @@ class TrajDataBase:
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
+        ##########################################################################
+        # plot refline
+        if refline is not None:
+            x = range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev)
+            ax.plot(x, [refline] * len(x), '--', c='gray', linewidth=linewidth)
         ##########################################################################
         # plot
         x = range(0, len(avg_token_ba_traj) * self.save_ev, self.save_ev)

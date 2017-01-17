@@ -9,6 +9,10 @@ import StringIO
 from database import DataBase
 from trajdatabase import TrajDataBase
 from utilities import load_rc
+from bokeh import mpl
+from bokeh.models import Range1d
+from bokeh.embed import components
+
 
 ##########################################################################
 app = Flask(__name__)
@@ -22,7 +26,7 @@ DEFAULTS = {'block_names': ['Select', '0001','0050', '1000', '2000', '2800'],
             'sel_block_name': 'Select',
             'sel_cat': 'Select',
             'sel_probe': 'Select',
-            'headers': ['model_name', 'learning_rate', 'num_hidden_units', 'best_token_ba'],
+            'headers': ['model_name', 'learning_rate', 'num_iterations', 'best_token_ba'],
             'allow_incomplete' : True}
 ##########################################################################
 log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
@@ -95,6 +99,14 @@ def load_filtered_log_entries():
 def home():
     ##########################################################################
     # inits
+    bokeh_head = """
+        <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.4.min.css" type="text/css" />
+        <script type="text/javascript" src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.4.min.js"></script>
+        <script type="text/javascript">
+            Bokeh.set_log_level("info");
+        </script>
+        """
+    probes = [DEFAULTS['sel_probe']]
     acts_2d_img = None
     token_acts_dh_img = None
     token_corcoeff_hist_img = None
@@ -105,11 +117,10 @@ def home():
     cat_sim_dh_img = None
     neighbors_table_img = None
     token_ba_trajs_img = None
-    test_pp_traj_img = None
-    avg_token_ba_traj_img = None
+    test_pp_traj_img = {}
+    avg_token_ba_traj_img = {}
     cfreq_traj_img = None
     ba_pp_mw_corr_img = None
-    probes = [DEFAULTS['sel_probe']]
     ##########################################################################
     # load log entries and any requests
     print 'Loading home...'
@@ -129,18 +140,21 @@ def home():
             # make test_pp_traj_img
             print 'Making test_pp_traj_img'
             fig = trajdatabase.make_test_pp_traj_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            test_pp_traj_img = base64.b64encode(figfile.getvalue())
+            p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover')
+            p.y_range=Range1d(0, 500)
+            p.xgrid.grid_line_color = None
+            p.logo = None
+            test_pp_traj_img['script'], test_pp_traj_img['div'] = components(p)
             ##########################################################################
             # make avg_token_ba_traj_img
             print 'Making avg_token_ba_traj_img'
             fig = trajdatabase.make_avg_token_ba_traj_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            avg_token_ba_traj_img = base64.b64encode(figfile.getvalue())
+            p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover')
+            p.y_range = Range1d(50, 80)
+            p.xgrid.grid_line_color = None
+            p.logo = None
+            avg_token_ba_traj_img['script'], avg_token_ba_traj_img['div'] = components(p)
+            print avg_token_ba_traj_img['div']
             ##########################################################################
             # make avg_token_ba_traj_img
             print 'Making ba_pp_mw_corr_img'
@@ -256,6 +270,7 @@ def home():
     ##########################################################################
     # render to html
     return render_template('home.html',
+                           bokeh_head=bokeh_head,
                            log_entries=log_entries,
                            headers=headers,
                            log_mtime=get_log_mtime(),

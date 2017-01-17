@@ -96,10 +96,30 @@
             text-decoration: none;
             cursor: pointer;
         }
+
+        .bk-root {
+            width : 0% !important;
+            display: table;
+            margin: 0 auto;
+
+
+
+        }
+
+        .bk-plot-wrapper {
+
+        }
+
+
     </style>
 
     <meta charset="UTF-8">
     <title>RNNLAB Interface</title>
+
+
+    {{ bokeh_head|safe }}
+
+
 </head>
 <body>
     <div id="header">
@@ -122,63 +142,63 @@
         </div>
     </div>
     <div id="main">
-            <form action="{{url_for('home')}}">
-                <table border="0" cellpadding="10" cellspacing="0" style="margin:0 auto;">
-                    <tr>
-                        {% for header in headers %}
-                            <th>{{header}}</th>
-                        {% endfor %}
-                    </tr>
-                    {% for log_entry in log_entries %}
-                        <tr>
-                            {% for cell in log_entry %}
-                                <td>{{cell}}</td>
-                            {% endfor %}
-                            <td style="text-align:left">
-                                {% if not log_entry.0==sel_model_name %}
-                                    <input type="radio" value="{{log_entry.0}}" name="model_name" onchange="this.form.submit()">
-                                {% else %}
-                                    <input type="radio" value="{{log_entry.0}}" name="model_name" checked="checked">
-                                    Block:&nbsp
-                                    <select name="block_name" onchange="this.form.submit()" class="dropdown" title="title">
-                                        {% for block_name in block_names %}
-                                            {% if block_name==sel_block_name %}
-                                                <option value="{{block_name}}" selected="selected">{{block_name}}</option>
-                                            {% else %}
-                                                <option value="{{block_name}}">{{block_name}}</option>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </select>
-                                {% endif %}
-                            </td>
-                        </tr>
+        <form action="{{url_for('home')}}">
+            <table border="0" cellpadding="10" cellspacing="0" style="margin:0 auto;">
+                <tr>
+                    {% for header in headers %}
+                        <th>{{header}}</th>
                     {% endfor %}
-                </table>
-                <div id="mainBottom">
-                    {% if sel_block_name != 'Select' %}
-                        Choose category:&nbsp
-                        <select name="cat" onchange="this.form.submit()" class="dropdown" title="title">
-                            {% for cat in cats %}
-                                {% if cat==sel_cat %}
-                                    <option value="{{cat}}" selected="selected">{{cat}}</option>
-                                {% else %}
-                                    <option value="{{cat}}">{{cat}}</option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                        Choose probe:&nbsp
-                        <select name="probe" onchange="this.form.submit()" class="dropdown" title="title">
-                            {% for probe in probes %}
-                                {% if probe==sel_probe %}
-                                    <option value="{{probe}}" selected="selected">{{probe}}</option>
-                                {% else %}
-                                    <option value="{{probe}}">{{probe}}</option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                    {% endif %}
-                </div>
-            </form>
+                </tr>
+                {% for log_entry in log_entries %}
+                    <tr>
+                        {% for cell in log_entry %}
+                            <td>{{cell}}</td>
+                        {% endfor %}
+                        <td style="text-align:left">
+                            {% if not log_entry.0==sel_model_name %}
+                                <input type="radio" value="{{log_entry.0}}" name="model_name" onchange="this.form.submit()">
+                            {% else %}
+                                <input type="radio" value="{{log_entry.0}}" name="model_name" checked="checked">
+                                Block:&nbsp
+                                <select name="block_name" onchange="this.form.submit()" class="dropdown" title="title">
+                                    {% for block_name in block_names %}
+                                        {% if block_name==sel_block_name %}
+                                            <option value="{{block_name}}" selected="selected">{{block_name}}</option>
+                                        {% else %}
+                                            <option value="{{block_name}}">{{block_name}}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
+            <div id="mainBottom">
+                {% if sel_block_name != 'Select' %}
+                    Choose category:&nbsp
+                    <select name="cat" onchange="this.form.submit()" class="dropdown" title="title">
+                        {% for cat in cats %}
+                            {% if cat==sel_cat %}
+                                <option value="{{cat}}" selected="selected">{{cat}}</option>
+                            {% else %}
+                                <option value="{{cat}}">{{cat}}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    Choose probe:&nbsp
+                    <select name="probe" onchange="this.form.submit()" class="dropdown" title="title">
+                        {% for probe in probes %}
+                            {% if probe==sel_probe %}
+                                <option value="{{probe}}" selected="selected">{{probe}}</option>
+                            {% else %}
+                                <option value="{{probe}}">{{probe}}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                {% endif %}
+            </div>
+        </form>
     </div>
 
 
@@ -278,15 +298,23 @@
 
     <div id="avgtrajModal" class="modal">
         <div class="modal-content">
+            <!--<center>-->
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
-            {% if test_pp_traj_img %}
-                <img src="data:image/png;base64,{{ test_pp_traj_img }}">
-                <img src="data:image/png;base64,{{ avg_token_ba_traj_img }}">
+            {% if test_pp_traj_img.script %}
+
+
+                {{ test_pp_traj_img.script|safe }}
+                {{ test_pp_traj_img.div|safe }}
+
+                {{ avg_token_ba_traj_img.script|safe }}
+                {{ avg_token_ba_traj_img.div|safe }}
+
                 <img src="data:image/png;base64,{{ ba_pp_mw_corr_img }}">
             {% else %}
                 <h3 style="color:red">Please select model</h3>
             {% endif %}
+            <!--</center>-->
         </div>
     </div>
 
@@ -344,7 +372,6 @@
 
 
         });
-
 
     </script>
 

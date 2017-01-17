@@ -57,7 +57,7 @@ of the box. Just make sure you specify the name of the corpus in **rnnlab_user_c
 
 
 During training, hidden state activations for user-specified words (probes) are saved into a pandas dataframe and saved
-to disk. An included browser application is used to visualize the data after training. In a python shell:
+to disk. An included browser application is used to visualize the data during and after training. In a python shell:
 
 .. code-block:: pycon
 
@@ -65,7 +65,7 @@ to disk. An included browser application is used to visualize the data after tra
     >>> log_app.start()
     * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
 
-.. figure:: src/rnnlab/data/images/example3.png
+.. figure:: rnnlab/data/images/example3.png
     :width: 200px
     :align: center
     :height: 100px
@@ -76,7 +76,7 @@ to disk. An included browser application is used to visualize the data after tra
 
 Example of a dimensionality reduction plot produced using the browser application:
 
-.. figure:: src/rnnlab/data/images/example.png
+.. figure:: data/images/example.png
     :width: 200px
     :align: center
     :height: 100px
@@ -85,7 +85,7 @@ Example of a dimensionality reduction plot produced using the browser applicatio
 
     SVD and t-SNE algorithms are used to map a trained model's hidden activation state space into 2 dimensions
 
-.. figure:: src/rnnlab/data/images/example2.png
+.. figure:: example2.png
     :width: 200px
     :align: center
     :height: 100px
