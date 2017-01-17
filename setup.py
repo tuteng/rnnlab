@@ -22,9 +22,7 @@ CLASSIFIERS = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 2.7",
 ]
-# INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','scikit','tensorflow']
-# INSTALL_REQUIRES = ['tensorflow']
-INSTALL_REQUIRES = []
+INSTALL_REQUIRES = ['numpy','matplotlib','pandas','scipy','scikit-learn','tensorflow']
 
 ###################################################################
 
@@ -74,8 +72,7 @@ if __name__ == "__main__":
         zip_safe=False,
         classifiers=CLASSIFIERS,
         install_requires=INSTALL_REQUIRES,
-        # not including this data because download script is supplied
-        # package_data={'rnnlab': ['data/probes/*.txt',
-        #                          'data/childes2_3YO/*.txt',
-        #                          'data/toyxy/*.csv']},
+        package_data={'rnnlab': ['data/probes/*.txt',
+                                 'data/childes2_3YO/*.txt',
+                                 'data/images/*.png']},
     )
