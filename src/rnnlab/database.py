@@ -151,7 +151,7 @@ class DataBase:
 
 
 
-    def make_acts_2d_fig(self, label_probe=False, is_titled=False):
+    def make_acts_2d_fig(self, sv_nums=(2,3), label_probe=False, is_titled=False):
         ##########################################################################
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
@@ -160,7 +160,7 @@ class DataBase:
         ##########################################################################
         # svd
         u, s, v = linalg.svd(self.all_acts_df.values)  # row_singular_vectors, singular_values, column_singular_vectors
-        acts_2d_svd = u[:, :2]  # TODO make sure this is right
+        acts_2d_svd = u[:, sv_nums]
         ##########################################################################
         # tsne
         acts_2d_tsne = TSNE().fit_transform(self.all_acts_df.values)
@@ -172,12 +172,12 @@ class DataBase:
         figsize = (12, 8)
         title_font_size = 16
         ax_font_size = 16
-        leg_font_size = 10
+        leg_font_size = 12
         label_fontsize = 4
         linewidth = 2.0
         ##########################################################################
         # fig
-        fig, axarr = plt.subplots(1, 2, figsize=(12, 8))
+        fig, axarr = plt.subplots(1, 2, figsize=figsize)
         fig_name = '{} Block {} Acts Dimensionality Reduction'.format(self.model_name, self.block_name)
         if is_titled: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
@@ -187,7 +187,8 @@ class DataBase:
             axarr[n].scatter(x[:, 0], x[:, 1], lw=0, s=40, c=palette[palette_ids])
             axarr[n].axis('off')
             axarr[n].axis('tight')
-            axarr[n].set_title(['SVD', 't-SNE'][n], fontsize=16)
+            descr_str = ', '.join(['sv {}: var {:2.0f}%'.format(i, s[i]) for i in sv_nums])
+            axarr[n].set_title(['SVD ({})'.format(descr_str), 't-SNE'][n], fontsize=title_font_size)
             ##########################################################################
             # add the labels for each cat
             for cat in self.cat_list:
@@ -236,7 +237,7 @@ class DataBase:
         ax.set_xlabel('Pearson Correlation Coefficient', fontsize=ax_font_size)
         ax.set_ylabel('Number of observations', fontsize=ax_font_size)
         ax.hist(corr_mat, bins)
-        ax.set_xlim([0, 1]) # this doesn't work well before model has trained
+        ax.set_xlim([0, 1]) # this doesn't work well for block 0001
         ##########################################################################
         # Hide the right and top spines
         ax.spines['right'].set_visible(False)

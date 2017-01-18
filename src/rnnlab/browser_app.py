@@ -11,7 +11,10 @@ from trajdatabase import TrajDataBase
 from utilities import load_rc
 from bokeh import mpl
 from bokeh.models import Range1d
+from bokeh.models import HoverTool
 from bokeh.embed import components
+from bokeh.models import ColumnDataSource
+from bokeh.models.glyphs import Line
 
 
 ##########################################################################
@@ -26,7 +29,7 @@ DEFAULTS = {'block_names': ['0001','0050', '1000', '2000', '2800'],
             'sel_block_name': 'Select',
             'sel_cat': 'Select',
             'sel_probe': 'Select',
-            'headers': ['model_name', 'learning_rate', 'bptt_steps', 'num_iterations', 'best_token_ba'],
+            'headers': ['model_name', 'learning_rate', 'bptt_steps', 'num_hidden_units', 'num_iterations', 'best_token_ba'],
             'allow_incomplete' : True}
 ##########################################################################
 log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
@@ -134,7 +137,7 @@ def home():
     cat_cluster_img = None
     cat_sim_dh_img = None
     neighbors_table_img = None
-    token_ba_trajs_img = None # TODO convert this to bokeh dict
+    token_ba_trajs_img = {}
     test_pp_traj_img = {}
     avg_token_ba_traj_img = {}
     cfreq_traj_img = None
@@ -153,8 +156,10 @@ def home():
             session['model_name'] = None
         ##########################################################################
         # if different_model_name selected, set block_name to default
-        if session['model_name'] != sel_model_name: sel_block_name = DEFAULTS['sel_block_name']
+        if session['model_name'] != sel_model_name and session['block_name'] != 'Trajectory':
+            sel_block_name = DEFAULTS['sel_block_name']
         session['model_name'] = sel_model_name
+        session['block_name'] = sel_block_name
         ##########################################################################
         # only display trained block_names in dropdown
         block_names = get_trained_block_names(sel_model_name)
@@ -253,11 +258,42 @@ def home():
                 ##########################################################################
                 # make token_ba trajectories_fig
                 print 'Making token_ba_trajs_img for probes in "{}"'.format(sel_cat)
-                fig = trajdatabase.make_token_ba_trajs_fig(sel_probes, sel_cat)
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                token_ba_trajs_img = base64.b64encode(figfile.getvalue())
+                fig, x, ys, palette = trajdatabase.make_token_ba_trajs_fig(sel_probes, sel_cat)
+                hover = HoverTool(
+                    tooltips=[
+                        ('block', '@block'),
+                        ('probe', '@probe'),
+                        ('balAcc', '$y')
+                    ]
+                )
+                p = mpl.to_bokeh(fig, tools=[hover, 'pan, wheel_zoom, crosshair, save'])
+                # from bokeh.palettes import Dark2_5 as palette
+                # palette = itertools.cycle(palette)
+                import itertools
+
+
+
+                for n, y in enumerate(ys):
+                    source = ColumnDataSource(
+                        data=dict(
+                            block=x,
+                            balAcc=y,
+                            probe=[sel_probes[n]]*len(x)
+                        )
+                    )
+                    line = Line(x='block', y='balAcc', line_color=next(palette), line_width=2)
+                    p.add_glyph(source, line)
+
+
+
+
+
+
+                p.y_range = Range1d(40, 100)
+                p.xgrid.grid_line_color = None
+                p.toolbar.logo = None
+                p.plot_width = 1200
+                token_ba_trajs_img['script'], token_ba_trajs_img['div'] = components(p)
                 ##########################################################################
                 # make cfreq_traj_fig
                 print 'Making cfreq_traj_img for probes in "{}"'.format(sel_cat)
@@ -273,7 +309,6 @@ def home():
                 # make probes to select from
                 probes += database.cat_probe_list_dict[sel_cat]
                 probes.sort()
-                sel_probes = probes[1:]  # removes 'Select'
                 ##########################################################################
                 # make acts_dh_fig for a single token
                 print 'Making (single probe) acts_dh_img'

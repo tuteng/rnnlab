@@ -117,7 +117,7 @@ class RNNHelper(object):
         ##########################################################################
         # make model_name (flavor in name is required for data removal to work)
         time_of_init = datetime.datetime.now().strftime('%m-%d-%H-%M')
-        model_name = '{}_{}_{}'.format(socket.gethostname(), time_of_init, flavor)
+        model_name = '{}_{}'.format(time_of_init, flavor)
         ##########################################################################
         # exit if model name dir already exists
         if os.path.isdir(os.path.join(self.runs_dir, model_name)):

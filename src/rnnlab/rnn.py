@@ -1,4 +1,4 @@
-import os, time, shutil, socket, csv, sys
+import os, time, shutil, socket, csv
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -149,7 +149,6 @@ class RNN(RNNHelper):
     def remove_old_data(self, num_more_recent=5):
         ##########################################################################
         del_candidates_list = []
-        models_run_on_this_machine = []
         model_names_deleted = []
         ##########################################################################
         # get runs log
@@ -160,10 +159,9 @@ class RNN(RNNHelper):
             if log_content:
                 for row in log_content:
                     if row[0].startswith(socket.gethostname()):
-                        model_name, best_token_ba = row[0], row[-1]
+                        model_name, best_avg_token_ba = row[0], row[-1]
                         flavor = model_name.split('_')[-1]
-                        del_candidates_list.append((model_name, best_token_ba, flavor))
-                        models_run_on_this_machine.append(model_name)
+                        del_candidates_list.append((model_name, best_avg_token_ba, flavor))
             ##########################################################################
             # sort del_candidates_list
             sorted_del_candidates_list = sorted(del_candidates_list, key=itemgetter(2, 1))
@@ -180,15 +178,14 @@ class RNN(RNNHelper):
                         shutil.rmtree(os.path.join(self.runs_dir, model_name))
                         print('Deleted {} from runs dir'.format(model_name))
                     group_list.pop(0)
-
             ##########################################################################
-            # remove log entries corresponding with models deleted above if not completed (completed data is still informative)
+            # remove log entries corresponding with models deleted above and if not completed (completed data is still informative)
             log_content = csv.reader(open(self.log_path, 'r'))
             runs_log_content_new = []
             for row in log_content:
                 if not 'model_name' in row:
                     completed = int(row[-2])
-                    if completed == 1 or row[0] not in models_run_on_this_machine or row[0] not in model_names_deleted:
+                    if completed == 1 or row[0] not in model_names_deleted:
                         runs_log_content_new.append(row)
                 elif 'model_name' in row:
                     runs_log_content_new.append(row)

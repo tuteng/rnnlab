@@ -165,7 +165,7 @@ class TrajDataBase:
         # choose seaborn style and palette
         import seaborn as sns  # if globally imported, will change all other figs unpredictably
         sns.set_style('white')
-        palette = iter(sns.color_palette("hls", len(sel_probes)))
+        palette = iter(sns.color_palette("hls", len(sel_probes)).as_hex()) # as hex may not work for matplotlib
         ##########################################################################
         # fig settings
         ymax, max_num_probes = 14, 75  # 75 is largest number of probes (mammals cat)
@@ -189,16 +189,16 @@ class TrajDataBase:
         ax.tick_params(axis='both', which='both', top='off', right='off')
         ax.set_ylim([0, 100])
         ##########################################################################
-        # plot
+        # plot # TODO uncomment
         for token_ba_traj, probe in zip(token_ba_traj_mat, sel_probes):
             x = range(0, len(token_ba_traj) *self.save_ev, self.save_ev)
-            ax.plot(x, token_ba_traj, '-', linewidth=linewidth, label=probe, c=next(palette))
+        #     ax.plot(x, token_ba_traj, '-', linewidth=linewidth, label=probe, c=next(palette))
         ##########################################################################
         # legend
         ax.set_position([0.1, 0.1, 0.8, 0.85]) # 0.8  shrinks width to make room for legend
         ax.legend(fontsize=leg_font_size, loc='best', bbox_to_anchor=(1.11, 1.05))
         ##########################################################################
-        return fig
+        return fig, x, token_ba_traj_mat, palette
 
 
     def make_cfreq_traj_fig(self, sel_probes, sel_cat, is_titled=False):

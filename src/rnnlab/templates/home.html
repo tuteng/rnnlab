@@ -288,7 +288,11 @@
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
             {% if token_ba_trajs_img %}
-                <img src="data:image/png;base64,{{ token_ba_trajs_img }}">
+
+                {{ token_ba_trajs_img.script|safe }}
+                {{ token_ba_trajs_img.div|safe }}
+
+
                 <img src="data:image/png;base64,{{ cfreq_traj_img }}">
             {% else %}
                 <h3 style="color:red">Please select a category</h3>
@@ -298,11 +302,9 @@
 
     <div id="avgtrajModal" class="modal">
         <div class="modal-content">
-            <!--<center>-->
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
-            {% if test_pp_traj_img.script %}
-
+            {% if test_pp_traj_img %}
 
                 {{ test_pp_traj_img.script|safe }}
                 {{ test_pp_traj_img.div|safe }}
@@ -314,7 +316,6 @@
             {% else %}
                 <h3 style="color:red">Please select Trajectory</h3>
             {% endif %}
-            <!--</center>-->
         </div>
     </div>
 
