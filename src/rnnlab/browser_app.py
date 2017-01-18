@@ -20,13 +20,7 @@ from bokeh.models.glyphs import Line
 ##########################################################################
 app = Flask(__name__)
 ##########################################################################
-DEFAULTS = {'block_names': ['0001','0050', '1000', '2000', '2800'],
-            'cats': ['Select','BODY', 'KITCHEN', 'MAMMAL', 'FAMILY', 'TOYS', 'BIRD',
-                       'CLOTHING', 'NUMBERS','FURNITURE', 'MUSIC', 'INSECT', 'DAYS',
-                       'TIMES', 'HOUSEHOLD', 'BATHROOM','DESSERT', 'TOOLS', 'ELECTRONICS',
-                       'MONTHS', 'DRINK', 'SPACE', 'FRUIT','VEHICLES', 'WEATHER',
-                       'VEGETABLE', 'MEAT', 'GAMES', 'PLANTS', 'SHAPE'],
-            'sel_block_name': 'Select',
+DEFAULTS = {'sel_block_name': 'Select',
             'sel_cat': 'Select',
             'sel_probe': 'Select',
             'headers': ['model_name', 'learning_rate', 'bptt_steps', 'num_hidden_units', 'num_iterations', 'best_token_ba'],
@@ -36,13 +30,13 @@ log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv
 ##########################################################################
 
 
-def get_trained_block_names(model_name):
+def get_trained_block_names(model_name, default_blocks=('0001','0050','1000','2000','2800')):
     ##########################################################################
     runs_dir = os.path.abspath(load_rc('runs_dir'))
     path = os.path.join(runs_dir, model_name, 'Data_Frame')
     ##########################################################################
     trained_block_names = [DEFAULTS['sel_block_name'], 'Trajectory']
-    for b in DEFAULTS['block_names']:
+    for b in default_blocks:
         if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(b))):
             trained_block_names.append(b)
     ##########################################################################
@@ -126,8 +120,9 @@ def home():
         </script>
         """
     probes = [DEFAULTS['sel_probe']]
-    block_names = DEFAULTS['block_names']
-    cats = sorted(DEFAULTS['cats'])
+    cats = [DEFAULTS['sel_cat']]
+    block_names = [DEFAULTS['sel_block_name']]
+
     acts_2d_img = None
     token_acts_dh_img = None
     token_corcoeff_hist_img = None
@@ -201,6 +196,9 @@ def home():
             elif sel_cat == DEFAULTS['sel_cat']:
                 database, trajdatabase = load_databases(sel_model_name, sel_block_name)
                 ##########################################################################
+                # make cats to select from
+                cats += database.cat_list
+                ##########################################################################
                 # make ba_breakdown_scatter_img
                 print 'Making ba_breakdown_scatter_img'
                 fig = database.make_ba_breakdown_scatter_fig()
@@ -236,10 +234,13 @@ def home():
             elif sel_probe == DEFAULTS['sel_probe']:
                 database, trajdatabase = load_databases(sel_model_name, sel_block_name)
                 ##########################################################################
+                # make cats to select from
+                cats += database.cat_list
+                ##########################################################################
                 # make probes to select from
                 probes += database.cat_probe_list_dict[sel_cat]
                 probes.sort()
-                sel_probes = probes[1:] # removes 'Select'
+                sel_probes = probes[1:] # removes 'Select' #TODO do i need to rmeove it?
                 ##########################################################################
                 # make neighbors_table_img
                 print 'Making neighbors_table_img'
@@ -268,12 +269,6 @@ def home():
                     ]
                 )
                 p = mpl.to_bokeh(fig, tools=[hover, 'pan, wheel_zoom, crosshair, save'])
-                # from bokeh.palettes import Dark2_5 as palette
-                # palette = itertools.cycle(palette)
-                import itertools
-
-
-
                 for n, y in enumerate(ys):
                     source = ColumnDataSource(
                         data=dict(
@@ -284,9 +279,6 @@ def home():
                     )
                     line = Line(x='block', y='balAcc', line_color=next(palette), line_width=2)
                     p.add_glyph(source, line)
-
-
-
 
 
 
@@ -306,6 +298,9 @@ def home():
             ##########################################################################
             else:
                 database, trajdatabase = load_databases(sel_model_name, sel_block_name)
+                ##########################################################################
+                # make cats to select from
+                cats += database.cat_list
                 ##########################################################################
                 # make probes to select from
                 probes += database.cat_probe_list_dict[sel_cat]

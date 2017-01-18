@@ -201,6 +201,28 @@
         </form>
     </div>
 
+    <!--trajectory only-->
+
+    <div id="avgtrajModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Model Name: {{sel_model_name}}</h2>
+            {% if test_pp_traj_img %}
+
+                {{ test_pp_traj_img.script|safe }}
+                {{ test_pp_traj_img.div|safe }}
+
+                {{ avg_token_ba_traj_img.script|safe }}
+                {{ avg_token_ba_traj_img.div|safe }}
+
+                <img src="data:image/png;base64,{{ ba_pp_mw_corr_img }}">
+            {% else %}
+                <h3 style="color:red">Please select Trajectory</h3>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- block name only-->
 
     <div id="dimredModal" class="modal">
         <div class="modal-content">
@@ -210,22 +232,20 @@
             {% if acts_2d_img %}
                 <img src="data:image/png;base64,{{ acts_2d_img }}">
             {% else %}
-                <h3 style="color:red">Please select a block</h3>
+                <h3 style="color:red">Please select a block or unselect category</h3>
             {% endif %}
         </div>
     </div>
-    
-    <div id="dhModal" class="modal">
+
+    <div id="catsimModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
             <h3>Block: {{sel_block_name}}</h3>
-            {% if token_acts_dh_img %}
-                <img src="data:image/png;base64,{{ token_acts_dh_img }}">
-                <img src="data:image/png;base64,{{ token_corcoeff_hist_img }}">
-                <img src="data:image/png;base64,{{ acts_dh_img }}">
+            {% if cat_sim_dh_img %}
+                <img src="data:image/png;base64,{{ cat_sim_dh_img }}">
             {% else %}
-                <h3 style="color:red">Please select a probe</h3>
+                <h3 style="color:red">Please select a block or unselect category</h3>
             {% endif %}
         </div>
     </div>
@@ -239,10 +259,13 @@
                 <img src="data:image/png;base64,{{ ba_breakdown_scatter_img }}">
                 <img src="data:image/png;base64,{{ ba_breakdow_img }}">
             {% else %}
-                <h3 style="color:red">Please select a block</h3>
+                <h3 style="color:red">Please select a block or unselect category</h3>
             {% endif %}
         </div>
     </div>
+
+    <!-- cat only-->
+
 
     <div id="clustModal" class="modal">
         <div class="modal-content">
@@ -253,19 +276,6 @@
                 <img src="data:image/png;base64,{{ cat_cluster_img }}">
             {% else %}
                 <h3 style="color:red">Please select a category</h3>
-            {% endif %}
-        </div>
-    </div>
-
-    <div id="catsimModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>Model Name: {{sel_model_name}}</h2>
-            <h3>Block: {{sel_block_name}}</h3>
-            {% if cat_sim_dh_img %}
-                <img src="data:image/png;base64,{{ cat_sim_dh_img }}">
-            {% else %}
-                <h3 style="color:red">Please select a block</h3>
             {% endif %}
         </div>
     </div>
@@ -300,21 +310,19 @@
         </div>
     </div>
 
-    <div id="avgtrajModal" class="modal">
+    <!-- probe only-->
+
+    <div id="dhModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
-            {% if test_pp_traj_img %}
-
-                {{ test_pp_traj_img.script|safe }}
-                {{ test_pp_traj_img.div|safe }}
-
-                {{ avg_token_ba_traj_img.script|safe }}
-                {{ avg_token_ba_traj_img.div|safe }}
-
-                <img src="data:image/png;base64,{{ ba_pp_mw_corr_img }}">
+            <h3>Block: {{sel_block_name}}</h3>
+            {% if token_acts_dh_img %}
+                <img src="data:image/png;base64,{{ token_acts_dh_img }}">
+                <img src="data:image/png;base64,{{ token_corcoeff_hist_img }}">
+                <img src="data:image/png;base64,{{ acts_dh_img }}">
             {% else %}
-                <h3 style="color:red">Please select Trajectory</h3>
+                <h3 style="color:red">Please select a probe</h3>
             {% endif %}
         </div>
     </div>

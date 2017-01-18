@@ -170,7 +170,7 @@ class TrajDataBase:
         # fig settings
         ymax, max_num_probes = 14, 75  # 75 is largest number of probes (mammals cat)
         ysize = max(6, ymax * len(sel_probes) / max_num_probes)  # prevents fig to be too small
-        figsize = (14, ysize)
+        figsize = (12, ysize)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 8
@@ -215,7 +215,7 @@ class TrajDataBase:
         # fig settings
         ymax, max_num_probes = 10, 75  # 75 is largest number of probes (mammals cat)
         ysize = max(6, ymax * len(sel_probes) / max_num_probes)  # prevents fig to be too small
-        figsize = (14, ysize)
+        figsize = (12, ysize)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 12

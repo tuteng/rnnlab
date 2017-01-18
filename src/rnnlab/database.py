@@ -514,7 +514,7 @@ class DataBase:
     def make_cat_cluster_fig(self, cat, is_titled=False):
         ##########################################################################
         # fig settings
-        figsize = (10, 10)
+        figsize = (12, 10)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10
@@ -546,7 +546,7 @@ class DataBase:
         cats_sorted_by_ba, cat_ba_dict, token_ba_row = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
-        figsize = (14, 8)
+        figsize = (12, 8)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10
@@ -580,7 +580,7 @@ class DataBase:
         cats_sorted_by_ba, cat_ba_dict, token_ba_row = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
-        figsize = (14, 8)
+        figsize = (12, 8)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10
