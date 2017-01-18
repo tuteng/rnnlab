@@ -142,6 +142,7 @@ class RNNHelper(object):
             'num_iterations': 20,
             'num_epochs': 1,
             'randomize_blocks': 0,
+            'optimizer' : 'adagrad',
             'save_ev': 10,
             'model_name': self.make_model_name(flavor),
             'flavor': flavor,

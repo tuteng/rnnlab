@@ -19,6 +19,7 @@ class IRNN(object):
         self.weight_init = str(configs_dict['weight_init'])
         self.act_function = configs_dict['act_function']
         self.bias = int(configs_dict['bias'])
+        self.optimizer = int(configs_dict['optimizer'])
         self.leakage = float(configs_dict['leakage']) # has to be float
         self.num_iterations = int(configs_dict['num_iterations'])
         self.num_epochs = int(configs_dict['num_epochs'])
@@ -106,10 +107,16 @@ class IRNN(object):
             self.mean_pp = tf.exp(self.total_loss)
             ########################################################################
             # training step definition
-            self.train_step = tf.train.AdagradOptimizer(self.learning_rate).minimize(self.total_loss)
+            if self.optimizer == 'adagrad':
+                print 'Using Adagrad optmizer'
+                self.train_step = tf.train.AdagradOptimizer(self.learning_rate).minimize(self.total_loss)
+            else:
+                print 'Using SGD optmizer'
+                self.train_step = tf.train.GradientDescentOptimizer(self.learning_rate).minimize(self.total_loss)
         ########################################################################
         # saver
         self.saver = tf.train.Saver(max_to_keep=10)
         ########################################################################
         # initialize all variables
         self.sess.run(tf.global_variables_initializer())
+        print 'Compiled tensorflow graph and initialized all variables'
