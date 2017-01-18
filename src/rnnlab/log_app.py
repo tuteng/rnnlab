@@ -1,5 +1,5 @@
 import os, datetime, pytz, csv, socket, base64, random
-from flask import Flask
+from flask import Flask, session
 from flask import render_template
 from flask import request
 from flask import send_file
@@ -143,8 +143,15 @@ def home():
     ##########################################################################
     if log_entries:
         ##########################################################################
-        # if not model_name selected, select first as default
-        if not sel_model_name: sel_model_name = log_entries[0][0]
+        # if not model_name selected, select first as default, store in session
+        if not sel_model_name:
+            sel_model_name = log_entries[0][0]
+            session['model_name'] = None
+        ##########################################################################
+        # if different_model_name selected than previously
+        print 'prev model_name:', session['model_name']
+        if session['model_name'] != sel_model_name: sel_block_name = DEFAULTS['sel_block_name']
+        session['model_name'] = sel_model_name
         ##########################################################################
         # only display trained block_names in dropdown
         block_names = get_trained_block_names(sel_model_name)
@@ -161,6 +168,7 @@ def home():
             p.y_range=Range1d(0, 500)
             p.xgrid.grid_line_color = None
             p.toolbar.logo = None
+            p.plot_width = 1200
             test_pp_traj_img['script'], test_pp_traj_img['div'] = components(p)
             ##########################################################################
             # make avg_token_ba_traj_img
@@ -170,6 +178,7 @@ def home():
             p.y_range = Range1d(50, 80)
             p.xgrid.grid_line_color = None
             p.toolbar.logo = None
+            p.plot_width=1200
             avg_token_ba_traj_img['script'], avg_token_ba_traj_img['div'] = components(p)
             ##################################q########################################
             # make avg_token_ba_traj_img
@@ -332,4 +341,5 @@ if __name__ == '__main__':
     app.run(port=5000, debug=True)
 
 def start():
+    app.secret_key = 'A0Zr98j/3yX R~XHH!jmN]LWX/,?RT'
     app.run(port=5000, debug=True) # can set this to false for production

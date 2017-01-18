@@ -277,7 +277,7 @@ class TrajDataBase:
         sns.set_style('white')
         ##########################################################################
         # fig settings
-        figsize = (12, 6)
+        figsize = (12, 6) # this doesn't affect bokeh
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10

@@ -44,7 +44,9 @@ def write_to_bashrc(bashrc, alias):
 
 def make_rnnlab_alias(app_dirname):
     ##########################################################################
-    alias = 'alias rnnlab="python {}/example_log.py"\n'.format(app_dirname)
+    app_file_name = 'browser_app.py'
+    app_path = os.path.join(app_dirname, app_file_name)
+    alias = 'alias rnnlab="python {}"\n'.format(app_path)
     homefolder = os.path.expanduser('~')
     ##########################################################################
     try: # works on ubuntu
@@ -57,7 +59,7 @@ def make_rnnlab_alias(app_dirname):
     except:
         print sys.exc_info()[0]
         print 'Could not create bash alias for running browser app. To start it, please type "python {}"'\
-            .format(os.path.join(app_dirname, 'example_log.py'))
+            .format(os.path.join(app_dirname, app_file_name))
 
 
 
