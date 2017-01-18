@@ -90,5 +90,5 @@ class SRN(object):
         self.saver = tf.train.Saver(max_to_keep=10)
         ########################################################################
         # initialize all variables
-        self.sess.run(tf.initialize_all_variables())
+        self.sess.run(tf.global_variables_initializer())
         print 'Compiled tensorflow graph and initialized all variables'

@@ -154,6 +154,7 @@ def home():
         if not sel_model_name:
             sel_model_name = log_entries[0][0]
             session['model_name'] = None
+            session['block_name'] = None
         ##########################################################################
         # if different_model_name selected, set block_name to default
         if session['model_name'] != sel_model_name and session['block_name'] != 'Trajectory':
