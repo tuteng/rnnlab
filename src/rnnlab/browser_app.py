@@ -103,7 +103,7 @@ def load_filtered_log_entries():
     filtered_headers = [i for n, i in enumerate(headers) if n in col_ids]
     complete = 0 if DEFAULTS['allow_incomplete'] else 1
     filtered_log_entries = [[i for n, i in enumerate(log_entry) if n in col_ids] for log_entry in log_content[1:]
-                            if int(log_entry[-2]) == complete and socket.gethostname() in log_entry[0]]
+                            if int(log_entry[-2]) == complete]
     ##########################################################################
     return filtered_log_entries, filtered_headers
 
