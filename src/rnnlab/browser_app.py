@@ -38,7 +38,7 @@ def get_trained_block_names(model_name):
     runs_dir = os.path.abspath(load_rc('runs_dir'))
     path = os.path.join(runs_dir, model_name, 'Data_Frame')
     ##########################################################################
-    trained_block_names = ['Select']
+    trained_block_names = [DEFAULTS['sel_block_name'], 'Trajectory']
     for b in DEFAULTS['block_names']:
         if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(b))):
             trained_block_names.append(b)
@@ -68,11 +68,14 @@ def load_databases(model_name, block_name):
     configs_dict = dict(np.load(os.path.join(path, file_name)).item())
     ##########################################################################
     # make database
-    print 'Loading database for {} {}...'.format(model_name, block_name)
-    path = os.path.join(runs_dir, model_name, 'Data_Frame')
-    file_name = 'df_block_{}.h5'.format(block_name)
-    df = pd.read_hdf(os.path.join(path, file_name), 'df')
-    database = DataBase(configs_dict, df, block_name)
+    if block_name != 'Trajectory':
+        print 'Loading database for {} {}...'.format(model_name, block_name)
+        path = os.path.join(runs_dir, model_name, 'Data_Frame')
+        file_name = 'df_block_{}.h5'.format(block_name)
+        df = pd.read_hdf(os.path.join(path, file_name), 'df')
+        database = DataBase(configs_dict, df, block_name)
+    else:
+        database = None
     ##########################################################################
     # make trajdatabase
     print 'Loading trajdatabase for {}...'.format(model_name)
@@ -121,6 +124,7 @@ def home():
         """
     probes = [DEFAULTS['sel_probe']]
     block_names = DEFAULTS['block_names']
+    cats = sorted(DEFAULTS['cats'])
     acts_2d_img = None
     token_acts_dh_img = None
     token_corcoeff_hist_img = None
@@ -130,14 +134,14 @@ def home():
     cat_cluster_img = None
     cat_sim_dh_img = None
     neighbors_table_img = None
-    token_ba_trajs_img = None
+    token_ba_trajs_img = None # TODO convert this to bokeh dict
     test_pp_traj_img = {}
     avg_token_ba_traj_img = {}
     cfreq_traj_img = None
     ba_pp_mw_corr_img = None
     ##########################################################################
     # load log entries and any requests
-    print 'Loading home...'
+    print '\nLoaded home'
     log_entries, headers = load_filtered_log_entries()
     sel_model_name, sel_block_name, sel_probe, sel_cat = get_requests()
     ##########################################################################
@@ -148,8 +152,7 @@ def home():
             sel_model_name = log_entries[0][0]
             session['model_name'] = None
         ##########################################################################
-        # if different_model_name selected than previously
-        print 'prev model_name:', session['model_name']
+        # if different_model_name selected, set block_name to default
         if session['model_name'] != sel_model_name: sel_block_name = DEFAULTS['sel_block_name']
         session['model_name'] = sel_model_name
         ##########################################################################
@@ -158,70 +161,74 @@ def home():
         ##########################################################################
         if sel_block_name != DEFAULTS['sel_block_name']:
             ##########################################################################
-            # load database
-            database, trajdatabase = load_databases(sel_model_name, sel_block_name) # TODO how to cache this?
-            ##########################################################################
-            # make test_pp_traj_img
-            print 'Making test_pp_traj_img'
-            fig = trajdatabase.make_test_pp_traj_fig()
-            p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover')
-            p.y_range=Range1d(0, 500)
-            p.xgrid.grid_line_color = None
-            p.toolbar.logo = None
-            p.plot_width = 1200
-            test_pp_traj_img['script'], test_pp_traj_img['div'] = components(p)
-            ##########################################################################
-            # make avg_token_ba_traj_img
-            print 'Making avg_token_ba_traj_img'
-            fig = trajdatabase.make_avg_token_ba_traj_fig()
-            p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover')
-            p.y_range = Range1d(50, 80)
-            p.xgrid.grid_line_color = None
-            p.toolbar.logo = None
-            p.plot_width=1200
-            avg_token_ba_traj_img['script'], avg_token_ba_traj_img['div'] = components(p)
+            if sel_block_name == 'Trajectory': # this loads only trajectory data for faster browser experience
+                database, trajdatabase = load_databases(sel_model_name, sel_block_name)  # TODO how to cache this?
+                ##########################################################################
+                # make test_pp_traj_img
+                print 'Making test_pp_traj_img'
+                fig = trajdatabase.make_test_pp_traj_fig()
+                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover, save')
+                p.y_range=Range1d(0, 500)
+                p.xgrid.grid_line_color = None
+                p.toolbar.logo = None
+                p.plot_width = 1200
+                test_pp_traj_img['script'], test_pp_traj_img['div'] = components(p)
+                ##########################################################################
+                # make avg_token_ba_traj_img
+                print 'Making avg_token_ba_traj_img'
+                fig = trajdatabase.make_avg_token_ba_traj_fig()
+                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover, save')
+                p.y_range = Range1d(50, 80)
+                p.xgrid.grid_line_color = None
+                p.toolbar.logo = None
+                p.plot_width=1200
+                avg_token_ba_traj_img['script'], avg_token_ba_traj_img['div'] = components(p)
+                ##################################q########################################
+                # make avg_token_ba_traj_img
+                print 'Making ba_pp_mw_corr_img'
+                fig = trajdatabase.make_ba_pp_window_corr_fig()
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                ba_pp_mw_corr_img = base64.b64encode(figfile.getvalue())
             ##################################q########################################
-            # make avg_token_ba_traj_img
-            print 'Making ba_pp_mw_corr_img'
-            fig = trajdatabase.make_ba_pp_window_corr_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            ba_pp_mw_corr_img = base64.b64encode(figfile.getvalue())
+            elif sel_cat == DEFAULTS['sel_cat']:
+                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
+                ##########################################################################
+                # make ba_breakdown_scatter_img
+                print 'Making ba_breakdown_scatter_img'
+                fig = database.make_ba_breakdown_scatter_fig()
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                ba_breakdown_scatter_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make ba_breakdown_img
+                print 'Making ba_breakdown_img'
+                fig = database.make_ba_breakdown_fig()
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                ba_breakdow_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make_acts_2d_fig
+                print 'Making acts_2d_img'
+                fig = database.make_acts_2d_fig()
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                acts_2d_img = base64.b64encode(figfile.getvalue())
+                ##########################################################################
+                # make cat_sim_dh_img
+                print 'Making cat_sim_dh_img'
+                fig = database.make_cat_sim_dh_fig()
+                figfile = StringIO.StringIO()
+                fig.savefig(figfile, format='png')
+                figfile.seek(0)
+                cat_sim_dh_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
-            # make ba_breakdown_scatter_img
-            print 'Making ba_breakdown_scatter_img'
-            fig = database.make_ba_breakdown_scatter_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            ba_breakdown_scatter_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            # make ba_breakdown_img
-            print 'Making ba_breakdown_img'
-            fig = database.make_ba_breakdown_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            ba_breakdow_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            # make_acts_2d_fig
-            print 'Making acts_2d_img'
-            fig = database.make_acts_2d_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            acts_2d_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            # make cat_sim_dh_img
-            print 'Making cat_sim_dh_img'
-            fig = database.make_cat_sim_dh_fig()
-            figfile = StringIO.StringIO()
-            fig.savefig(figfile, format='png')
-            figfile.seek(0)
-            cat_sim_dh_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            if sel_cat != DEFAULTS['sel_cat']:
+            elif sel_probe == DEFAULTS['sel_probe']:
+                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
                 ##########################################################################
                 # make probes to select from
                 probes += database.cat_probe_list_dict[sel_cat]
@@ -260,7 +267,13 @@ def home():
                 figfile.seek(0)
                 cfreq_traj_img = base64.b64encode(figfile.getvalue())
             ##########################################################################
-            if sel_probe != DEFAULTS['sel_probe']:
+            else:
+                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
+                ##########################################################################
+                # make probes to select from
+                probes += database.cat_probe_list_dict[sel_cat]
+                probes.sort()
+                sel_probes = probes[1:]  # removes 'Select'
                 ##########################################################################
                 # make acts_dh_fig for a single token
                 print 'Making (single probe) acts_dh_img'
@@ -301,7 +314,7 @@ def home():
                            log_mtime=get_log_mtime(),
                            block_names=block_names,
                            probes=probes,
-                           cats=sorted(DEFAULTS['cats']),
+                           cats=cats,
                            sel_block_name=sel_block_name,
                            sel_model_name=sel_model_name,
                            sel_probe=sel_probe,
@@ -338,8 +351,4 @@ def token_acts_dh_img():
 ##########################################################################
 if __name__ == '__main__':
     app.secret_key = 'A0Zr98j/3yX R~XHH!jmN]LWX/,?RT' # for sessions
-    app.run(port=5000, debug=True)
-
-def start():
-    app.secret_key = 'A0Zr98j/3yX R~XHH!jmN]LWX/,?RT'
-    app.run(port=5000, debug=True) # can set this to false for production
+    app.run(port=5000, debug=True, host='0.0.0.0')

@@ -11,7 +11,8 @@ class Corpus(object):
     Creates train and test corpus to use for rnn training
     """
 
-    def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None):
+    def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None,
+                 exclude_tokens=('PERIOD', 'QUESTION', 'EXCLAIM')):
         ##########################################################################
         # define data dir
         self.data_dir = os.path.join(os.path.dirname(__file__), 'data')
@@ -21,6 +22,7 @@ class Corpus(object):
         self.vocab_file_name = vocab_file_name # if specified, this is the list of tokens to include in vocab
         self.freq_cutoff = freq_cutoff # use this if no vocab file specified, None includes all tokens
         self.probes_name = probes_name # list of tokens to use for analysis after training
+        self.exclude_tokens = exclude_tokens
         self.corpus_content, self.num_total_docs = self.get_corpus_content()
         ##########################################################################
         # make instance variables
@@ -33,11 +35,19 @@ class Corpus(object):
 
     def get_corpus_content(self):
         ##########################################################################
+        print 'Loading corpus...'
+        if self.exclude_tokens: print 'Excluding tokens: {}'.format(', '.join(self.exclude_tokens))
+        ##########################################################################
         # load corpus
         corpus_content = []
         with open(os.path.join(self.data_dir, self.corpus_name, 'corpus.txt'),'r') as f:
             for doc in f.readlines():
-                corpus_content.append(doc.strip().strip('\n'))
+                if self.exclude_tokens:
+                    doc_token_list = filter(lambda a: a not in self.exclude_tokens, doc.split())
+                else:
+                    doc_token_list = doc.split()
+                doc_token_list_cleaned = [token.strip() for token in doc_token_list]
+                corpus_content.append(doc_token_list_cleaned)
         num_total_docs = len(corpus_content)
         ##########################################################################
         return corpus_content, num_total_docs
@@ -90,12 +100,12 @@ class Corpus(object):
         ##########################################################################
         # get doc token ids for either training or test doc
         if doc_id == 'test':
-            doc_str = ''
-            for i in self.test_doc_ids: doc_str += ' {}'.format(self.corpus_content[i])
+            doc_token_list = []
+            for i in self.test_doc_ids: doc_token_list += self.corpus_content[i]
         else:
-            doc_str = self.corpus_content[doc_id] # this is 1 big string
+            doc_token_list = self.corpus_content[doc_id]
         doc_token_ids = []
-        for token in doc_str.split():
+        for token in doc_token_list:
             if not token in self.token_id_dict:
                 token = "UNKNOWN"
             doc_token_ids.append(self.token_id_dict[token])
@@ -147,6 +157,11 @@ class Corpus(object):
                     token = line.strip().strip('\n')
                     vocab_list.append(token)
         ##########################################################################
+        # exclude tokens, if specified
+        if self.exclude_tokens is not None:
+            for token in self.exclude_tokens:
+                if token in vocab_list: vocab_list.remove(token)
+        ##########################################################################
         # make token list and dict from vocab
         vocab_list.append("UNKNOWN")
         for token in vocab_list:
@@ -177,7 +192,7 @@ class Corpus(object):
         cat_list = list(sorted(set(probe_cat_dict.values())))
         ##########################################################################
         num_tokens, num_probes = len(token_list), len(probe_list)
-        print 'Total num tokens in vocabulary: {} | Num probes in vocab : {}'.format(num_tokens, num_probes)
+        print 'Vocabulary size: {} | Num probes in vocab : {}'.format(num_tokens, num_probes)
         ##########################################################################
         return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
 
@@ -236,7 +251,7 @@ class Corpus(object):
         ##########################################################################
         # collect probe frequency
         for block_name, doc_id in self.gen_train_block_name_and_id(epochs=1, shuffle=False):
-            doc = self.corpus_content[doc_id].split()
+            doc = self.corpus_content[doc_id]
             traj_id = int(block_name) - 1
             for probe in doc:
                 if probe in self.probe_id_dict:  probe_cf_traj_dict[probe][traj_id] += 1

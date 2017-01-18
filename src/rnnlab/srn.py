@@ -57,8 +57,7 @@ class SRN(object):
             self.y = tf.placeholder(tf.int32, [None], name='labels_placeholder')
             ########################################################################
             # project x to hidden layer by indexing Wx
-            x_projected_to_hidden = tf.nn.embedding_lookup(self.Wx, self.x) # no need fo sparse lookup function because i am not feeding in one-hots
-            # it would make sense to do sparse lookup if i had multiple-hots, where multiple features (hot values) would need to be indexed to multiple rows of dense embedding (weights)
+            x_projected_to_hidden = tf.nn.embedding_lookup(self.Wx, self.x)
             ########################################################################
             # rnn cell definition
             act = None
