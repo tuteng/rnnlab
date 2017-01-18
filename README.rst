@@ -56,14 +56,16 @@ of the box. Just make sure you specify the name of the corpus in **rnnlab_user_c
 
 
 
-During training, hidden state activations for user-specified words (probes) are saved into a pandas dataframe and saved
-to disk. An included browser application is used to visualize the data during and after training. In a python shell:
+During training, hidden state activations for user-specified words (probes) are collected into a pandas dataframe and saved
+to disk. An included browser application can visualize the data during and after training. After you have started
+training a model, a bash alias will have been created for easy access to the app. Simply type ``rnnlab`` in a bash shell
+and navigate to the url.
 
 .. code-block:: pycon
 
-    >>> from rnnlab import log_app
-    >>> log_app.start()
+    >>> rnnlab
     * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
+
 
 .. figure:: example3.png
     :width: 200px
