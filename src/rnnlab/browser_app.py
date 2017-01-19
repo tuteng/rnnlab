@@ -42,7 +42,10 @@ def get_trained_block_names(model_name, default_blocks=('0001','1000','2000','28
             trained_block_names.append(b)
     ##########################################################################
     # append last available block_name
-    trained_block_names.append(b)
+    available_block_names = sorted([b for b in os.listdir(path) if b.startswith('df')])
+    if available_block_names:
+        last_block_name = ''.join([s for s in available_block_names[-1] if s.isdigit()][:4]) # TODO this could be more elegant
+        trained_block_names.append(last_block_name)
     ##########################################################################
     return trained_block_names
 
