@@ -1,8 +1,21 @@
 import csv
 import sys
-
+import subprocess
 import numpy as np
 import os
+
+
+
+def check_disk_space(runs_dir):
+    ##########################################################################
+    df = subprocess.Popen(["df", "{}".format(runs_dir)], stdout=subprocess.PIPE)
+    df_str = df.communicate()[0]
+    used = int(df_str.split('\n')[1].split()[4].strip('%'))
+    ##########################################################################
+    print 'Checking disk space of filesystem containing runs_dir:'
+    print df_str
+    ##########################################################################
+    if used > 90: sys.exit('rnnlab: Disk space usage > 90%')
 
 
 def load_token_data(runs_dir, model_name):

@@ -75,5 +75,6 @@ if __name__ == "__main__":
         package_data={'rnnlab': ['data/probes/*.txt',
                                  'data/childes2_3YO/*.txt',
                                  'data/images/*.png',
+                                 'static/favicon.ico',
                                  'templates/*.html']},
     )

@@ -8,6 +8,7 @@ from database import DataBase
 from trajdatabase import TrajDataBase
 from rnnhelper import RNNHelper
 from utilities import make_rnnlab_alias
+from utilities import check_disk_space
 
 
 class RNN(RNNHelper):
@@ -70,18 +71,18 @@ class RNN(RNNHelper):
                 # save checkpoint
                 self.save_ckpt(block_name)
                 ##########################################################################
-                # make database and save
+                # make database
                 df = self.make_df()
                 database = DataBase(self.rnn.configs_dict, df, block_name)
                 ##########################################################################
                 # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
-                trajdatabase = TrajDataBase(self.rnn.configs_dict)
+                trajdatabase = TrajDataBase(self.rnn.configs_dict, mode='a')
                 test_pp = self.calc_test_pp()
                 new_entry, test_pp, avg_token_ba,\
                 token_ba_list = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
                 trajdatabase.append_entry(new_entry)
                 ##########################################################################
-                # add token_ba_col to main database
+                # add token_ba_col to main database and save
                 token_ba_col = [token_ba_list[database.probe_list.index(probe)] for probe in database.df['probe']]
                 database.add_col('token_ba', token_ba_col)
                 database.save_df()
@@ -108,6 +109,9 @@ class RNN(RNNHelper):
 
 
     def prepare_training(self):
+        ##########################################################################
+        # check disk space
+        check_disk_space(self.runs_dir)
         ##########################################################################
         # remove low priority data from previous rnns
         self.remove_old_data()
@@ -320,7 +324,7 @@ class RNN(RNNHelper):
                         # add acts_mat and pp_vec to mb_data_dict
                         for n, hidden_unit_label in enumerate(hidden_unit_labels):
                             mb_data_dict[hidden_unit_label] += acts_mat.T[n].tolist()
-                        mb_data_dict['token_pp'] += pp_vec.tolist() # TODO was previously named 'pp' only
+                        mb_data_dict['token_pp'] += pp_vec.tolist()
                         ##########################################################################
                         # reset batch
                         tokens_in_mb = []

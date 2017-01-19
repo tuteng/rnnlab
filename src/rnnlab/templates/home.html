@@ -114,17 +114,18 @@
     </style>
 
     <meta charset="UTF-8">
-    <title>RNNLAB Interface</title>
+    <title>rnnlab ({{hostname}})</title>
 
 
     {{ bokeh_head|safe }}
 
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
 
 </head>
 <body>
     <div id="header">
         <div id="inner-header">
-            <h1><a href="{{url_for('home')}}">RNNLAB Interface</a></h1>
+            <h1><a href="{{url_for('home')}}">rnnlab ({{hostname}})</a></h1>
             <h3>Last update: <i>{{log_mtime}}</i></h3>
         </div>
         <div id="btns">
@@ -175,7 +176,7 @@
                 {% endfor %}
             </table>
             <div id="mainBottom">
-                {% if sel_block_name != 'Select' %}
+                {% if sel_block_name not in ['Select','Trajectory'] %}
                     Choose category:&nbsp
                     <select name="cat" onchange="this.form.submit()" class="dropdown" title="title">
                         {% for cat in cats %}

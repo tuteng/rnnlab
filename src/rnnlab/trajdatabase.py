@@ -1,4 +1,4 @@
-import os, sys, time
+import os, time
 import numpy as np
 import multiprocessing as mp
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ class TrajDataBase:
     Can also be instantiated outside of training for pos-hoc analysis
     """
 
-    def __init__(self, configs_dict, complevel=9):
+    def __init__(self, configs_dict, mode='r', complevel=9):
         ##########################################################################
         # define trajdfpath
         runs_dir = load_rc('runs_dir')
@@ -31,7 +31,7 @@ class TrajDataBase:
         self.probe_cf_traj_dict = load_token_data(runs_dir, self.model_name)
         ##########################################################################
         # open trajstore
-        self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc')
+        self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc', mode=mode)
 
 
     def calc_new_entry(self, df, all_acts_df, test_pp, block_name, use_classifier=False):

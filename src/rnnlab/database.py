@@ -53,10 +53,7 @@ class DataBase:
 
     def save_df(self, complevel=9):
         ##########################################################################
-        # with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w') as store:
-        #     store.append('df', self.df, format='table')
-
-        with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w', format='fixed') as store: # TODO make sure fixed format works
+        with pd.HDFStore(self.dfpath,complevel=complevel,complib='blosc',mode='w', format='fixed') as store:
             store['df'] = self.df
         ##########################################################################
         print 'Saved dataframe with complevel {}'.format(complevel)

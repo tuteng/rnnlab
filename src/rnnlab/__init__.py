@@ -1,7 +1,10 @@
 from rnn import RNN
 from utilities import gen_user_configs, load_rc, get_childes_data
+import matplotlib
+matplotlib.use('tkagg') # for mac osx
 
-__version__ = "2.1.5"
+
+__version__ = "2.2.0"
 
 __title__ = "rnnlab"
 __description__ = "Python API for training RNN Lanugage Models with Tensorflow"

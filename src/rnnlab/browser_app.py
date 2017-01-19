@@ -41,11 +41,12 @@ def get_trained_block_names(model_name, default_blocks=('0001','1000','2000','28
         if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(b))):
             trained_block_names.append(b)
     ##########################################################################
-    # append last available block_name
-    available_block_names = sorted([b for b in os.listdir(path) if b.startswith('df')])
-    if available_block_names:
-        last_block_name = ''.join([s for s in available_block_names[-1] if s.isdigit()][:4]) # TODO this could be more elegant
-        trained_block_names.append(last_block_name)
+    # append last available block_name (get second to last one to prevent concurrentreading and writing )
+    saved_block_names = sorted([b for b in os.listdir(path) if b.startswith('df')])
+    if len(saved_block_names) > 2:
+        last_block_name = filter(lambda x: x.isdigit(), os.path.splitext(saved_block_names[-2])[0])
+        if not default_blocks[-1] in trained_block_names:
+            trained_block_names.append(last_block_name)
     ##########################################################################
     return trained_block_names
 
@@ -108,9 +109,14 @@ def load_filtered_log_entries():
     headers = log_content[0]
     col_ids = [headers.index(header) for header in list(DEFAULTS['headers'])]
     filtered_headers = [i for n, i in enumerate(headers) if n in col_ids]
-    complete = 0 if DEFAULTS['allow_incomplete'] else 1
-    filtered_log_entries = [[i for n, i in enumerate(log_entry) if n in col_ids] for log_entry in log_content[1:]
-                            if int(log_entry[-2]) == complete]
+    check_completed = 0 if DEFAULTS['allow_incomplete'] else 1
+    filtered_log_entries = [[i for n, i in enumerate(log_entry) if n in col_ids]
+                            for log_entry in log_content[1:]
+                            if int(log_entry[-2]) == check_completed
+                            and float(log_entry[-1]) >= 50.0] # prevents concurrent reading and writing
+    ##########################################################################
+    # reverse so that newest entries are on top
+    filtered_log_entries = filtered_log_entries[::-1]
     ##########################################################################
     return filtered_log_entries, filtered_headers
 
@@ -175,7 +181,7 @@ def home():
                 # make test_pp_traj_img
                 print 'Making test_pp_traj_img'
                 fig = trajdatabase.make_test_pp_traj_fig()
-                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover, save')
+                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, save')
                 p.y_range=Range1d(0, 500)
                 p.xgrid.grid_line_color = None
                 p.toolbar.logo = None
@@ -185,7 +191,7 @@ def home():
                 # make avg_token_ba_traj_img
                 print 'Making avg_token_ba_traj_img'
                 fig = trajdatabase.make_avg_token_ba_traj_fig()
-                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, hover, save')
+                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, save')
                 p.y_range = Range1d(50, 80)
                 p.xgrid.grid_line_color = None
                 p.toolbar.logo = None
@@ -346,6 +352,7 @@ def home():
     ##########################################################################
     # render to html
     return render_template('home.html',
+                           hostname=socket.gethostname(),
                            bokeh_head=bokeh_head,
                            log_entries=log_entries,
                            headers=headers,
