@@ -19,7 +19,7 @@ class IRNN(object):
         self.weight_init = str(configs_dict['weight_init'])
         self.act_function = configs_dict['act_function']
         self.bias = int(configs_dict['bias'])
-        self.optimizer = int(configs_dict['optimizer'])
+        self.optimizer = configs_dict['optimizer']
         self.leakage = float(configs_dict['leakage']) # has to be float
         self.num_iterations = int(configs_dict['num_iterations'])
         self.num_epochs = int(configs_dict['num_epochs'])
@@ -118,5 +118,8 @@ class IRNN(object):
         self.saver = tf.train.Saver(max_to_keep=10)
         ########################################################################
         # initialize all variables
-        self.sess.run(tf.global_variables_initializer())
+        if not device == '/gpu:0':
+            self.sess.run(tf.global_variables_initializer())
+        else:
+            self.sess.run(tf.initialize_all_variables()) # TODO how do i update my gpu installation of tensorflow?
         print 'Compiled tensorflow graph and initialized all variables'

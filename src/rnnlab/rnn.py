@@ -196,7 +196,7 @@ class RNN(RNNHelper):
                     writer.writerow(row)
         ##########################################################################
         else:
-            print 'rnnlab WARNING: Could not find {}.'.format(self.log_path)
+            print 'rnnlab WARNING: Could not find {}'.format(self.log_path)
 
 
     def make_log_entry(self):

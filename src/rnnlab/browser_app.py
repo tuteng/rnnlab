@@ -23,14 +23,15 @@ app = Flask(__name__)
 DEFAULTS = {'sel_block_name': 'Select',
             'sel_cat': 'Select',
             'sel_probe': 'Select',
-            'headers': ['model_name', 'learning_rate', 'bptt_steps', 'num_hidden_units', 'num_iterations', 'best_token_ba'],
+            'headers': ['model_name', 'optimizer','learning_rate',
+                        'bptt_steps', 'num_hidden_units', 'num_iterations', 'best_token_ba'],
             'allow_incomplete' : True}
 ##########################################################################
 log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
 ##########################################################################
 
 
-def get_trained_block_names(model_name, default_blocks=('0001','0050','1000','2000','2800')):
+def get_trained_block_names(model_name, default_blocks=('0001','1000','2000','2800')):
     ##########################################################################
     runs_dir = os.path.abspath(load_rc('runs_dir'))
     path = os.path.join(runs_dir, model_name, 'Data_Frame')
@@ -39,6 +40,9 @@ def get_trained_block_names(model_name, default_blocks=('0001','0050','1000','20
     for b in default_blocks:
         if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(b))):
             trained_block_names.append(b)
+    ##########################################################################
+    # append last available block_name
+    trained_block_names.append(b)
     ##########################################################################
     return trained_block_names
 

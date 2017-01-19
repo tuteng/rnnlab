@@ -209,11 +209,11 @@
             <h2>Model Name: {{sel_model_name}}</h2>
             {% if test_pp_traj_img %}
 
-                {{ test_pp_traj_img.script|safe }}
-                {{ test_pp_traj_img.div|safe }}
-
                 {{ avg_token_ba_traj_img.script|safe }}
                 {{ avg_token_ba_traj_img.div|safe }}
+
+                {{ test_pp_traj_img.script|safe }}
+                {{ test_pp_traj_img.div|safe }}
 
                 <img src="data:image/png;base64,{{ ba_pp_mw_corr_img }}">
             {% else %}
