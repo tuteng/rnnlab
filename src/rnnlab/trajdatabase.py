@@ -23,7 +23,7 @@ class TrajDataBase:
         ##########################################################################
         # assign instance variables
         self.model_name = configs_dict['model_name']
-        self.save_ev = configs_dict['save_ev']
+        self.save_ev = int(configs_dict['save_ev'])
         ##########################################################################
         # load token data
         self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
@@ -94,13 +94,13 @@ class TrajDataBase:
         return train_hca, test_hca
 
 
-    def calc_token_ba_list(self, all_acts_df): # uses multiprocessing
+    def calc_token_ba_list(self, all_acts_df, step_size=0.001): # TODO make this step art of user cofigs
         ##########################################################################
         # calc simmat
         probe_simmat = calc_probe_sim_mat(all_acts_df, self.probe_list)
         ##########################################################################
         # make thr_ranges
-        num_cpus, thr_start, thr_end, thr_step = 6, 0.7, 1.0, 0.01  # TODO how flexible is this?
+        num_cpus, thr_start, thr_end, thr_step = 6, 0.7, 1.0, step_size  # TODO how flexible is this?
         thr_num_steps = round(((thr_end - thr_start) / thr_step) / num_cpus, 2)
         thr_lists = []
         while True:
@@ -111,10 +111,14 @@ class TrajDataBase:
             if round(thr_end, 2) == round(thr_start, 2):  # TODO why do i have to round here?
                 break
         ##########################################################################
+        start = time.time()
         if mp.cpu_count() < num_cpus:
             print 'rnnlab WARNING: CPU Count is < 6. Parallel calculation of token_ba may not work'
         else:
-            print 'Calculating token ba using {} processes...'.format(num_cpus)
+            print 'Calculating token ba using {} processes with {} steps...'.format(num_cpus, step_size)
+            print 'Threshold Ranges:'
+            for i in thr_lists: print i, '\n'
+
         ##########################################################################
         # calc ba
         pool = mp.Pool(processes=num_cpus)
@@ -127,6 +131,7 @@ class TrajDataBase:
         results = [result.get() for result in async_results]
         token_ba_mat = np.hstack((mat for mat in results))
         pool.close()
+        print 'Took {} mins to calc ba'.format(abs(time.time() - start)/60.)
         ##########################################################################
         # token_ba_mat = self.calc_ba_mats(probe_simmat, num_thrs, thrs, 'token')
         token_ba_mat_col_means = np.nanmean(token_ba_mat, 0) * 100
@@ -228,19 +233,10 @@ class TrajDataBase:
         ##########################################################################
         # axes
         ax.set_xlabel('Training Block', fontsize=ax_font_size)
-        ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
-        ax.set_ylim([0,100])
-        ax2 = ax.twinx()
-        ax2.set_ylabel('Cumulative Frequency', fontsize=ax_font_size)
-        ##########################################################################
-        # plot cat ba
-        x = range(0, len(cat_ba_traj) * self.save_ev, self.save_ev)
-        ax.plot(x, cat_ba_traj, '-', linewidth=linewidth,
-                label='{} Balanced Accuracy'.format(sel_cat), c='black')
+        ax.set_ylabel('Cumulative Frequency', fontsize=ax_font_size)
         ax.spines['top'].set_visible(False)
-        ax2.spines['top'].set_visible(False)
-        ax.tick_params(axis='both', which='both', top='off')
-        ax2.tick_params(axis='both', which='both', top='off')
+        ax.spines['right'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
         ##########################################################################
         # calc Y_thr (so that annotations are made only for probes with y hgiher than y_thr)
         maxperc, max_num_probes = 95, 75
@@ -254,7 +250,7 @@ class TrajDataBase:
             probe_cf_traj_all_blocks = self.probe_cf_traj_dict[probe]
             probe_cf_traj = probe_cf_traj_all_blocks[:num_trained_blocks]
             x = range(len(probe_cf_traj))
-            ax2.plot(x, probe_cf_traj, '--', linewidth=linewidth, c=next(palette))
+            ax.plot(x, probe_cf_traj, '--', linewidth=linewidth, c=next(palette))
             ##########################################################################
             # annotate
             y = probe_cf_traj[-1]

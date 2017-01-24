@@ -1,9 +1,54 @@
 import csv
+import time
 import sys
 import subprocess
+import shutil
 import numpy as np
 import os
 
+
+def remove_log_entry(model_name):
+    ##########################################################################
+    log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
+    log_content = csv.reader(open(log_path, 'r'))
+    ##########################################################################
+    # get all entries except for that belonging to model_name
+    runs_log_content_new = []
+    for row in log_content:
+        if not 'model_name' in row:
+            model_name_ = row[0]
+            if model_name_ != model_name:
+                runs_log_content_new.append(row)
+        elif 'model_name' in row:
+            runs_log_content_new.append(row)
+    ##########################################################################
+    time.sleep(1)
+    with open(log_path, 'w') as f:
+        writer = csv.writer(f)
+        for row in runs_log_content_new:
+            writer.writerow(row)
+
+
+
+def remove_model_data(model_name):
+    ##########################################################################
+    runs_dir = os.path.abspath(load_rc('runs_dir'))
+    path_to_delete = os.path.join(runs_dir, model_name)
+    if '' == raw_input('Press ENTER to delete {}'.format(path_to_delete)):
+        shutil.rmtree(path_to_delete)
+
+
+
+def is_completed(model_name):
+    ##########################################################################
+    log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
+    ##########################################################################
+    log_content = csv.reader(open(log_path, 'r'))
+    for row in log_content:
+        if row[0] == model_name:
+            is_completed = bool(row[-2])
+            ##########################################################################
+            return is_completed
 
 
 def check_disk_space(runs_dir):
@@ -270,11 +315,7 @@ def gen_user_configs():
     rows = []
     for n, row in enumerate(reader):
         if n != 0: rows.append(tuple(row))
-    if len(set(rows)) != len(rows): sys.exit('rnnlab: Duplicate configs detected in {}'.format(user_configs_path))
-    ##########################################################################
-    # warn user
-    if len(rows) > 1 : print 'WARNING: rnnlab does not remember which user_configurations may have been used ' \
-                            'for training in the past. All configurations will be used.'
+    if len(set(rows)) != len(rows): print 'rnnlab WARNING: Duplicate configs detected in {}'.format(user_configs_path)
     ##########################################################################
     # gen user_configs (tuple)
     reader = csv.reader(open(os.path.join(rnn_dir, user_configs_path), 'r'))
@@ -301,7 +342,7 @@ def load_rc(string): # .rnnlabrc file should specify gpu/cpu and runs_dir path
     return rc
 
 
-def get_childes_data():
+def get_childes_data(): # downloads childes data from github - not used
     ##########################################################################
     print 'Downloading childes data to {}...'.format(os.getcwd())
     ##########################################################################

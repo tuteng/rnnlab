@@ -1,9 +1,9 @@
 import os, sys, time
 from operator import itemgetter
 import numpy as np
-import multiprocessing as mp
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
+from matplotlib import rcParams
 from scipy import linalg
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import linkage, dendrogram
@@ -72,10 +72,10 @@ class DataBase:
         # make cat_ba_dict (this is not really needed)
         cat_ba_dict = df_cat_ba.to_dict()['token_ba']
         ##########################################################################
-        # make token_ba_row
-        token_ba_row = self.df[['probe','token_ba']].groupby('probe').first()['token_ba'].as_matrix()
+        # make token_ba_vec
+        token_ba_vec = self.df[['probe','token_ba']].groupby('probe').first()['token_ba'].as_matrix()
         ##########################################################################
-        return cats_sorted_by_ba, cat_ba_dict, token_ba_row
+        return cats_sorted_by_ba, cat_ba_dict, token_ba_vec
 
 
     def make_token_acts_df(self, sel_probe):
@@ -181,7 +181,7 @@ class DataBase:
         # axis
         for n, x in enumerate([acts_2d_svd, acts_2d_tsne]):
             palette_ids = [self.cat_list.index(cat) for cat in acts_cats]
-            axarr[n].scatter(x[:, 0], x[:, 1], lw=0, s=40, c=palette[palette_ids])
+            axarr[n].scatter(x[:, 0], x[:, 1], lw=0, s=30, c=palette[palette_ids])
             axarr[n].axis('off')
             axarr[n].axis('tight')
             descr_str = ', '.join(['sv {}: var {:2.0f}%'.format(i, s[i]) for i in sv_nums])
@@ -191,7 +191,7 @@ class DataBase:
             for cat in self.cat_list:
                 x_ids = np.where(np.asarray(acts_cats) == cat)[0]
                 xtext, ytext = np.median(x[x_ids, :], axis=0)
-                txt = axarr[n].text(xtext, ytext, str(cat), fontsize=12, color=palette[self.cat_list.index(cat)])
+                txt = axarr[n].text(xtext, ytext, str(cat), fontsize=8, color=palette[self.cat_list.index(cat)])
                 txt.set_path_effects([
                     PathEffects.Stroke(linewidth=5, foreground="w"),
                     PathEffects.Normal()])
@@ -316,7 +316,7 @@ class DataBase:
         return fig
 
 
-    def make_acts_dh_fig(self, sel_probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
+    def make_acts_dh_fig(self, sel_probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False): # TODO values ar ehigher than 1.0
         ##########################################################################
         # make acts_df
         if sel_probe:
@@ -516,6 +516,7 @@ class DataBase:
         ax_font_size = 16
         leg_font_size = 10
         linewidth = 2.0
+        rcParams['lines.linewidth'] = 2.0
         ##########################################################################
         # fig
         fig, ax = plt.subplots(figsize=figsize)
@@ -530,17 +531,69 @@ class DataBase:
         dist_matrix = pdist(cat_acts_df.values, 'euclidean')
         linkages = linkage(dist_matrix, method='complete')
         dendrogram(linkages,
+                   ax=ax,
                    leaf_label_func=lambda x: probes_in_cat[x],
-                   orientation='left',
+                   orientation='right',
                    leaf_font_size=10)
+        ##########################################################################
+        # axis
+        ax.tick_params(axis='both', which='both', top='off', right='off', left='off')
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.set_xlim([0, 1])
+        plt.tight_layout()
+        ##########################################################################
+        return fig
+
+
+    def make_two_cat_cluster_fig(self, cat1, cat2, is_titled=False): # TODO use *args here for arbitrary num cats
+        ##########################################################################
+        # fig settings
+        figsize = (12, 10)
+        title_font_size = 16
+        ax_font_size = 16
+        leg_font_size = 10
+        linewidth = 2.0
+        rcParams['lines.linewidth'] = 2.0
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize)
+        fig_name = '{} Block {} Clustering of {} and {}'.format(self.model_name, self.block_name, cat1, cat2)
+        if is_titled: plt.title(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # make cat_acts_mat
+        cats_acts_mat_list = []
+        cats_probe_list = []
+        for cat in [cat1, cat2]:
+            cat_acts_df = self.make_cat_acts_df(cat)
+            cats_acts_mat_list.append(cat_acts_df.values)
+            cats_probe_list += cat_acts_df.index.tolist()
+        cat_acts_mat = np.vstack((mat for mat in cats_acts_mat_list))
+        ##########################################################################
+        # dendrogram
+        dist_matrix = pdist(cat_acts_mat, 'euclidean')
+        linkages = linkage(dist_matrix, method='complete')
+        dendrogram(linkages,
+                   ax=ax,
+                   labels = cats_probe_list,  # leaf_label_func=lambda x: cats_probe_list[x],
+                   orientation='right',
+                   leaf_font_size=10)
+        ##########################################################################
+        # axis
+        ax.tick_params(axis='both', which='both', top='off', right='off', left='off')
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.set_xlim([0, 20])
         ##########################################################################
         return fig
 
 
     def make_ba_breakdown_fig(self, is_titled=False):
         ##########################################################################
-        # make cat_probe_list_dict and cats_sorted_by_ba
-        cats_sorted_by_ba, cat_ba_dict, token_ba_row = self.get_ba_breakdown_data()
+        # get_ba_breakdown_data
+        cats_sorted_by_ba, cat_ba_dict, token_ba_vec = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -565,7 +618,7 @@ class DataBase:
         for cat_id, cat in enumerate(cats_sorted_by_ba):
             cat_probe_list = self.cat_probe_list_dict[cat]
             cat_probe_ids = [self.probe_list.index(e_token) for e_token in cat_probe_list]
-            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_row[cat_probe_ids]
+            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_vec[cat_probe_ids]
             ax.plot(xs, ys, 'b.', alpha=1)
         ##########################################################################
         return fig
@@ -574,7 +627,7 @@ class DataBase:
     def make_ba_breakdown_scatter_fig(self, is_titled=False):
         ##########################################################################
         # make cat_probe_list_dict and cats_sorted_by_ba
-        cats_sorted_by_ba, cat_ba_dict, token_ba_row = self.get_ba_breakdown_data()
+        cats_sorted_by_ba, cat_ba_dict, token_ba_vec = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -614,7 +667,7 @@ class DataBase:
             annotated_y_ints_long_words_curr_cat = []
             cat_probe_list = self.cat_probe_list_dict[cat]
             cat_probe_ids = [self.probe_list.index(e_token) for e_token in cat_probe_list]
-            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_row[cat_probe_ids]
+            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_vec[cat_probe_ids]
             ax.plot(xs, ys, 'b.', alpha=0) # this needs to be plot for annotation to work
             ##########################################################################
             # annotate points
@@ -635,3 +688,21 @@ class DataBase:
         return fig
 
     
+
+    def make_ba_breakdown_avg_line(self, cats_sorted_by_ba_master=None): # for model comparison
+        ##########################################################################
+        # get_ba_breakdown_data
+        cats_sorted_by_ba, cat_ba_dict, token_ba_vec = self.get_ba_breakdown_data()
+        ##########################################################################
+        # set master sorter if not specified (but only do this once for fair model comparison)
+        if cats_sorted_by_ba_master is None:
+            cats_sorted_by_ba_master = cats_sorted_by_ba
+        ##########################################################################
+        # make line
+        ba_breakdown_avg_line = np.zeros(len(cat_ba_dict))
+        for cat_id, cat in enumerate(cats_sorted_by_ba_master):
+            cat_probe_list = self.cat_probe_list_dict[cat]
+            cat_probe_ids = [self.probe_list.index(probe) for probe in cat_probe_list]
+            ba_breakdown_avg_line[cat_id] = np.mean(token_ba_vec[cat_probe_ids])
+        ##########################################################################
+        return ba_breakdown_avg_line, cats_sorted_by_ba_master

@@ -9,6 +9,8 @@ from trajdatabase import TrajDataBase
 from rnnhelper import RNNHelper
 from utilities import make_rnnlab_alias
 from utilities import check_disk_space
+from utilities import remove_log_entry
+from utilities import is_completed
 
 
 class RNN(RNNHelper):
@@ -30,7 +32,7 @@ class RNN(RNNHelper):
 
 
 
-    def train(self, df_blocks=None):
+    def train(self, block_names_to_analyze=None): # TODO this is an important parameter, put it into user_configs
         ##########################################################################
         self.prepare_training()
         ##########################################################################
@@ -38,19 +40,19 @@ class RNN(RNNHelper):
         elapsed_start = time.time()
         num_mbs_trained, total_num_examples_seen, completed = 0, 0, False
         stop_block_int = self.rnn.corpus.num_total_docs * self.rnn.num_epochs
-        stop_block_name = self.rnn.corpus.to_block_name(self.rnn.corpus.num_total_docs * self.rnn.num_epochs)
+        stop_block_name = self.rnn.corpus.to_block_name(self.rnn.corpus.num_train_docs * self.rnn.num_epochs)
         avg_token_ba_list = []
         ##########################################################################
         # format df_blocks
         # if df_blocks specified, data will only be extracted for those blocks and if they overlap with save_ev
-        if df_blocks is None: df_blocks = [self.rnn.corpus.to_block_name(i) for i in range(stop_block_int)]
+        if block_names_to_analyze is None: block_names_to_analyze = [self.rnn.corpus.to_block_name(i) for i in range(stop_block_int)]
         ##########################################################################
         # block
         for block_name, block_id in self.rnn.corpus.gen_train_block_name_and_id(
                     epochs=self.rnn.num_epochs, shuffle=self.rnn.randomize_blocks):
             self.print_train_stats(elapsed_start, block_name, block_id, num_mbs_trained)
             ##########################################################################
-            # iteration
+            # iteration 0001
             if int(block_name) != 1:  # enables saving of data prior to any training
                 for iteration_counter in xrange(self.rnn.num_iterations):
                     ##########################################################################
@@ -63,7 +65,7 @@ class RNN(RNNHelper):
                 print 'Skipped training first block. Proceeding with data extraction from untrained model...'
             ##########################################################################
             # after each save_ev block
-            is_make_df = int(block_name) % self.rnn.save_ev == 0 and block_name in df_blocks
+            is_make_df = int(block_name) % self.rnn.save_ev == 0 and block_name in block_names_to_analyze
             if is_make_df or int(block_name) in[1, stop_block_int]:
                 ##########################################################################
                 start = time.time()
@@ -94,7 +96,7 @@ class RNN(RNNHelper):
                 #########################################################################
                 # update log with best_avg_token_ba and completed
                 best_avg_token_ba = np.max(np.asarray(avg_token_ba_list))
-                completed = True if stop_block_name == block_name else False
+                completed = 1 if stop_block_name == block_name else 0
                 self.update_log(best_avg_token_ba, completed)
         ##########################################################################
         # at end of training, close session and upload data
@@ -162,7 +164,7 @@ class RNN(RNNHelper):
             # make del_candidates_list
             if log_content:
                 for row in log_content:
-                    if row[0].startswith(socket.gethostname()):
+                    if row[0].startswith(socket.gethostname()): # TODO don't need hostname
                         model_name, best_avg_token_ba = row[0], row[-1]
                         flavor = model_name.split('_')[-1]
                         del_candidates_list.append((model_name, best_avg_token_ba, flavor))
@@ -184,20 +186,9 @@ class RNN(RNNHelper):
                     group_list.pop(0)
             ##########################################################################
             # remove log entries corresponding with models deleted above and if not completed (completed data is still informative)
-            log_content = csv.reader(open(self.log_path, 'r'))
-            runs_log_content_new = []
-            for row in log_content:
-                if not 'model_name' in row:
-                    completed = int(row[-2])
-                    if completed == 1 or row[0] not in model_names_deleted:
-                        runs_log_content_new.append(row)
-                elif 'model_name' in row:
-                    runs_log_content_new.append(row)
-            time.sleep(1)
-            with open(self.log_path, 'w') as f:
-                writer = csv.writer(f)
-                for row in runs_log_content_new:
-                    writer.writerow(row)
+            for model_name in model_names_deleted:
+                if not is_completed(model_name):
+                    remove_log_entry(model_name)
         ##########################################################################
         else:
             print 'rnnlab WARNING: Could not find {}'.format(self.log_path)
@@ -239,7 +230,6 @@ class RNN(RNNHelper):
                 row[-1] = format(best_avg_token_ba, '.3f')
                 row[-2] = int(completed)
             log_content_new.append(row)
-        os.remove(self.log_path)  # remove log to reduce syncing issues
         with open(self.log_path, 'w') as f:
             writer = csv.writer(f)
             for row in log_content_new:
@@ -276,7 +266,7 @@ class RNN(RNNHelper):
         print '{} Training Session Closed and Graph reset\n\n'.format(self.rnn.model_name)
 
 
-    def make_df(self, fast=True):
+    def make_df(self, fast=False):
         ##########################################################################
         print 'Calculating hidden activations...'
         ##########################################################################

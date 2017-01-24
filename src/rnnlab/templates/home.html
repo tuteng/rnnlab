@@ -46,7 +46,7 @@
             background : #FFCA81;
             border-radius : 30px;
         }
-        .button {
+        .button-on {
             background-color: #FF9B12;
             border: none;
             color: black;
@@ -56,10 +56,20 @@
             cursor : pointer;
             margin: 5px 0px;
         }
+        .button-off {
+            background-color: #FF9B12;
+            border: none;
+            color: darkgrey;
+            padding: 10px 10px;
+            text-align: center;
+            display: inline-block;
+            cursor : pointer;
+            margin: 5px 0px;
+        }
         .dropdown {
            color: black;
            background-color: white;
-           padding-left: 15px;
+           padding-left: 5px;
         }
         .modal {
             display: none; /* Hidden by default */
@@ -98,18 +108,10 @@
         }
 
         .bk-root {
-            width : 0% !important;
+            width: 0% !important;
             display: table;
             margin: 0 auto;
-
-
-
         }
-
-        .bk-plot-wrapper {
-
-        }
-
 
     </style>
 
@@ -130,16 +132,16 @@
         </div>
         <div id="btns">
             <!--need block name only-->
-            <button id="avgtrajBtn" class="button">Avg Traj</button>
-            <button id="dimredBtn" class="button">2D Acts</button>
-            <button id="catsimBtn" class="button">Dh CatSim</button>
-            <button id="bdBtn" class="button">Ba Breakdown</button>
+            <button id="avgtrajBtn" class="{{button_class}}">Avg Traj</button>
+            <button id="dimredBtn" class="{{button_class}}">2D Acts</button>
+            <button id="catsimBtn" class="{{button_class}}">Dh CatSim</button>
+            <button id="bdBtn" class="button-on">Ba Breakdown</button>
             <!--need cats-->
-            <button id="clustBtn" class="button">Cat Cluster</button>
-            <button id="neighborsBtn" class="button">Cat Neighbors</button>
-            <button id="batrajBtn" class="button">Cat Ba Trajs</button>
+            <button id="clustBtn" class="{{button_class}}">Cat Cluster</button>
+            <button id="neighborsBtn" class="{{button_class}}">Cat Neighbors</button>
+            <button id="batrajBtn" class="{{button_class}}">Cat Ba Trajs</button>
             <!--need probes-->
-            <button id="dhBtn" class="button">Probe Dh Acts</button>
+            <button id="dhBtn" class="{{button_class}}">Probe Dh Acts</button>
         </div>
     </div>
     <div id="main">
@@ -187,6 +189,16 @@
                             {% endif %}
                         {% endfor %}
                     </select>
+                    Choose 2nd category:&nbsp
+                    <select name="cat2" onchange="this.form.submit()" class="dropdown" title="title">
+                        {% for cat2 in cats2 %}
+                            {% if cat2==sel_cat2 %}
+                                <option value="{{cat2}}" selected="selected">{{cat2}}</option>
+                            {% else %}
+                                <option value="{{cat2}}">{{cat2}}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
                     Choose probe:&nbsp
                     <select name="probe" onchange="this.form.submit()" class="dropdown" title="title">
                         {% for probe in probes %}
@@ -194,6 +206,16 @@
                                 <option value="{{probe}}" selected="selected">{{probe}}</option>
                             {% else %}
                                 <option value="{{probe}}">{{probe}}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    Model action:&nbsp
+                    <select name="maction" onchange="this.form.submit()" class="dropdown" title="title">
+                        {% for maction in mactions %}
+                            {% if maction==sel_maction %}
+                                <option value="{{maction}}" selected="selected">{{maction}}</option>
+                            {% else %}
+                                <option value="{{maction}}">{{maction}}</option>
                             {% endif %}
                         {% endfor %}
                     </select>
@@ -254,9 +276,13 @@
     <div id="bdModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h2>Model Name: {{sel_model_name}}</h2>
-            <h3>Block: {{sel_block_name}}</h3>
-            {% if ba_breakdown_scatter_img %}
+            {% if sel_maction == 'Compare' %}
+                <h2>Model Comparison</h2>
+                <h3>Block: {{sel_block_name}}</h3>
+                <img src="data:image/png;base64,{{ ba_comparison_reference_img }}">
+            {% elif ba_breakdown_scatter_img %}
+                <h2>Model Name: {{sel_model_name}}</h2>
+                <h3>Block: {{sel_block_name}}</h3>
                 <img src="data:image/png;base64,{{ ba_breakdown_scatter_img }}">
                 <img src="data:image/png;base64,{{ ba_breakdow_img }}">
             {% else %}
@@ -276,7 +302,7 @@
             {% if cat_cluster_img %}
                 <img src="data:image/png;base64,{{ cat_cluster_img }}">
             {% else %}
-                <h3 style="color:red">Please select a category</h3>
+                <h3 style="color:red">Please select a category or unselect probe</h3>
             {% endif %}
         </div>
     </div>
@@ -289,7 +315,7 @@
             {% if neighbors_table_img %}
                 <img src="data:image/png;base64,{{ neighbors_table_img }}">
             {% else %}
-                <h3 style="color:red">Please select a category</h3>
+                <h3 style="color:red">Please select a category or unselect probe</h3>
             {% endif %}
         </div>
     </div>
@@ -299,14 +325,15 @@
             <span class="close">&times;</span>
             <h2>Model Name: {{sel_model_name}}</h2>
             {% if token_ba_trajs_img %}
-
-                {{ token_ba_trajs_img.script|safe }}
-                {{ token_ba_trajs_img.div|safe }}
-
-
-                <img src="data:image/png;base64,{{ cfreq_traj_img }}">
+                {% if sel_cat == 'Custom List' %}
+                    <img src="data:image/png;base64,{{ token_ba_trajs_img }}">
+                {% else %}
+                    {{ token_ba_trajs_img.script|safe }}
+                    {{ token_ba_trajs_img.div|safe }}
+                    <img src="data:image/png;base64,{{ cfreq_traj_img }}">
+                {% endif %}
             {% else %}
-                <h3 style="color:red">Please select a category</h3>
+                <h3 style="color:red">Please select a category or unselect probe</h3>
             {% endif %}
         </div>
     </div>

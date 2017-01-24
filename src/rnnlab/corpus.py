@@ -12,7 +12,7 @@ class Corpus(object):
     """
 
     def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None,
-                 exclude_tokens=('PERIOD', 'QUESTION', 'EXCLAIM')):
+                 exclude_tokens=None): #('PERIOD', 'QUESTION', 'EXCLAIM')):
         ##########################################################################
         # define data dir
         self.data_dir = os.path.join(os.path.dirname(__file__), 'data')
@@ -53,19 +53,19 @@ class Corpus(object):
         return corpus_content, num_total_docs
 
 
-    def split_corpus(self, min=70, save_ev=10): #TODO get save_ev from config
+    def split_corpus(self, min_num_test_docs=70, save_ev=10): #TODO get save_ev from config
         ##########################################################################
         # split corpus into train and test based on save_ev
-        if self.num_total_docs < 2 * min:
+        if self.num_total_docs < 2 * min_num_test_docs:
             sys.exit('rnnlab: Not enough docs in corpus: {}.'.format(self.num_total_docs))
         if save_ev > self.num_total_docs:
             sys.exit('rnnlab: save_ev is larger than number of total documents.')
         while True:
-            num_train_docs = (self.num_total_docs - min)
+            num_train_docs = (self.num_total_docs - min_num_test_docs)
             if num_train_docs % save_ev == 0:
                 break
             else:
-                min += 1
+                min_num_test_docs += 1
         ##########################################################################
         num_test_docs = self.num_total_docs - num_train_docs
         print 'Split corpus into {} train docs and {} test docs'.format(num_train_docs, num_test_docs)
