@@ -1,93 +1,101 @@
-import os, time, shutil, socket, csv
+import os, time, shutil, sys, csv
+import datetime
 import pandas as pd
 import numpy as np
 import tensorflow as tf
 from itertools import groupby
 from operator import itemgetter
+
+from corpus import Corpus
 from database import DataBase
 from trajdatabase import TrajDataBase
-from rnnhelper import RNNHelper
-from utilities import make_rnnlab_alias
-from utilities import check_disk_space
-from utilities import remove_log_entry
-from utilities import is_completed
+from utils import make_rnnlab_alias
+from utils import check_disk_space
+from utils import remove_log_entry
+from utils import is_training_completed
+from utils import to_block_name
+from utils import get_log_entries_list
+from utils import load_rnnlabrc
 
 
-class RNN(RNNHelper):
+np.set_printoptions(suppress=True)
+
+class RNN():
     """
-    Creates and trains a single model and saves training data to pandas data frame
+    Instantiates an RNN model, includes methods to train and save training data
     """
     def __init__(self, flavor, user_configs):
         ##########################################################################
-        # inherit super class variables
-        super(RNN, self).__init__()
-        ##########################################################################
         # define directories
+        self.runs_dir = load_rnnlabrc('runs_dir')
         self.log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
-        self.user_configs_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_user_configs.csv'))
         ##########################################################################
-        # create rnn with superclass method
-        self.rnn = super(RNN, self).create_rnn(user_configs, flavor)
-        self.rnn.model_name = self.rnn.configs_dict['model_name']
+        # make configs dict
+        self.configs_dict = self.make_configs_dict(user_configs, flavor)
+        ##########################################################################
+        # calc num_epochs and save_ev_block
+        self.num_reps = int(self.configs_dict['num_reps'])
+        self.num_iterations = int(self.configs_dict['num_iterations'])
+        self.num_epochs = int(self.num_reps / self.num_iterations)
+        self.save_ev_block = int(self.configs_dict['save_ev']) * self.num_epochs
+        if not self.num_reps % self.num_iterations == 0:
+            sys.exit('rnnlab: "num_reps" must be divisible by "num_iterations"')
+        print 'Num reps: {} / Num iterations: {} --> Num epochs : {}'.format(
+            self.num_reps, self.num_iterations, self.num_epochs)
+        print 'Num epochs: {} x save_ev --> Saving ev {}nth block'.format(
+            self.num_epochs,int(self.configs_dict['save_ev']), self.save_ev_block)
+        ##########################################################################
+        # make corpus
+        corpus_kwargs = {key : self.configs_dict[key]
+                       for key in ['corpus_name', 'vocab_file_name', 'freq_cutoff',
+                                   'probes_name', 'save_ev','block_order']}
+        corpus_kwargs['num_epochs'] = self.num_epochs
+        self.corpus = Corpus(**corpus_kwargs)
+        ##########################################################################
+        # create rnn
+        num_input_units = len(self.corpus.token_list)
+        self.rnn = self.create_rnn(num_input_units, self.configs_dict)
+        ##########################################################################
+        # assign instance variables
+        self.model_name = self.configs_dict['model_name']
+        self.block_order = str(self.configs_dict['block_order'])
+        self.mb_size = int(self.configs_dict['mb_size'])
+        self.num_hidden_units = int(self.configs_dict['num_hidden_units'])
+        self.bptt_steps = int(self.configs_dict['bptt_steps'])
 
 
-
-    def train(self, block_names_to_analyze=None): # TODO this is an important parameter, put it into user_configs
+    def train(self):
         ##########################################################################
         self.prepare_training()
         ##########################################################################
         # inits
         elapsed_start = time.time()
         num_mbs_trained, total_num_examples_seen, completed = 0, 0, False
-        stop_block_int = self.rnn.corpus.num_total_docs * self.rnn.num_epochs
-        stop_block_name = self.rnn.corpus.to_block_name(self.rnn.corpus.num_train_docs * self.rnn.num_epochs)
+        stop_block_id = self.corpus.num_train_doc_ids * self.num_epochs
+        stop_block_name = to_block_name(stop_block_id)
         avg_token_ba_list = []
         ##########################################################################
-        # format df_blocks
-        # if df_blocks specified, data will only be extracted for those blocks and if they overlap with save_ev
-        if block_names_to_analyze is None: block_names_to_analyze = [self.rnn.corpus.to_block_name(i) for i in range(stop_block_int)]
+        # save to data base before training
+        print 'Saving data from untrained model...'
+        self.save_to_database(to_block_name(0))
         ##########################################################################
-        # block
-        for block_name, block_id in self.rnn.corpus.gen_train_block_name_and_id(
-                    epochs=self.rnn.num_epochs, shuffle=self.rnn.randomize_blocks):
+        # training blocks
+        for block_name, block_id in self.corpus.gen_train_block_name_and_id():
             self.print_train_stats(elapsed_start, block_name, block_id, num_mbs_trained)
             ##########################################################################
-            # iteration 0001
-            if int(block_name) != 1:  # enables saving of data prior to any training
-                for iteration_counter in xrange(self.rnn.num_iterations):
-                    ##########################################################################
-                    # batch
-                    for (X, Y) in self.rnn.corpus.gen_batch(self.rnn.mb_size, self.rnn.bptt_steps, block_id):
-                        num_mbs_trained += 1
-                        total_num_examples_seen += self.rnn.mb_size
-                        self.rnn.sess.run(self.rnn.train_step, feed_dict={self.rnn.x: X, self.rnn.y: Y})
-            else:
-                print 'Skipped training first block. Proceeding with data extraction from untrained model...'
+            # training iterations
+            for iteration_counter in xrange(self.num_iterations):
+                ##########################################################################
+                # batch
+                for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
+                    num_mbs_trained += 1
+                    total_num_examples_seen += self.mb_size
+                    self.rnn.sess.run(self.rnn.train_step, feed_dict={self.rnn.x: X, self.rnn.y: Y})
             ##########################################################################
-            # after each save_ev block
-            is_make_df = int(block_name) % self.rnn.save_ev == 0 and block_name in block_names_to_analyze
-            if is_make_df or int(block_name) in[1, stop_block_int]:
-                ##########################################################################
+            # save_to_database
+            if int(block_name) % self.save_ev_block == 0:
                 start = time.time()
-                ##########################################################################
-                # save checkpoint
-                self.save_ckpt(block_name)
-                ##########################################################################
-                # make database
-                df = self.make_df()
-                database = DataBase(self.rnn.configs_dict, df, block_name)
-                ##########################################################################
-                # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
-                trajdatabase = TrajDataBase(self.rnn.configs_dict, mode='a')
-                test_pp = self.calc_test_pp()
-                new_entry, test_pp, avg_token_ba,\
-                token_ba_list = trajdatabase.calc_new_entry(df, database.all_acts_df, test_pp, block_name)
-                trajdatabase.append_entry(new_entry)
-                ##########################################################################
-                # add token_ba_col to main database and save
-                token_ba_col = [token_ba_list[database.probe_list.index(probe)] for probe in database.df['probe']]
-                database.add_col('token_ba', token_ba_col)
-                database.save_df()
+                test_pp, avg_token_ba = self.save_to_database(block_name)
                 #########################################################################
                 # print to console
                 print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(
@@ -103,17 +111,43 @@ class RNN(RNNHelper):
         self.complete_training()
 
 
+
+    def save_to_database(self, block_name):
+        ##########################################################################
+        # save checkpoint
+        self.save_ckpt(block_name)
+        ##########################################################################
+        # make database
+        df = self.make_df()
+        database = DataBase(self.configs_dict, df, block_name)
+        ##########################################################################
+        # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
+        trajdatabase = TrajDataBase(self.configs_dict, mode='a')
+        test_pp = self.calc_test_pp()
+        new_entry, test_pp, avg_token_ba, \
+        token_ba_list = trajdatabase.calc_new_entry(df, database.make_all_acts_df(), test_pp, block_name)
+        trajdatabase.append_entry(new_entry)
+        ##########################################################################
+        # add token_ba_col to main database and save
+        token_ba_col = [token_ba_list[database.probe_list.index(probe)] for probe in database.df['probe']]
+        database.add_col('token_ba', token_ba_col)
+        database.save_df()
+        ##########################################################################
+        return test_pp, avg_token_ba
+
+
+
     def save_ckpt(self, block_name):
         ##########################################################################
         ckpt_outfile = "weights_at_block_{}.ckpt".format(block_name)
-        path = os.path.join(self.runs_dir, self.rnn.model_name, 'Weights')
+        path = os.path.join(self.runs_dir, self.model_name, 'Weights')
         self.rnn.saver.save(self.rnn.sess, os.path.join(path, ckpt_outfile))
 
 
     def prepare_training(self):
         ##########################################################################
         # check disk space
-        check_disk_space(self.runs_dir)
+        check_disk_space()
         ##########################################################################
         # remove low priority data from previous rnns
         self.remove_old_data()
@@ -127,29 +161,38 @@ class RNN(RNNHelper):
         ##########################################################################
         # create data dirs
         for dir in ['Configs', 'Weights', 'Balanced_Accuracy', 'Data_Frame',
-                    'Sim_Mat', 'Classifier', 'Figures']:
-            path = os.path.join(self.runs_dir, self.rnn.model_name, dir)
+                    'Token_Data', 'Corpus_Data', 'Classifier', 'Figures']:
+            path = os.path.join(self.runs_dir, self.model_name, dir)
             if not os.path.isdir(path):
                 os.makedirs(path)
         ##########################################################################
         #  save token data
-        path = os.path.join(self.runs_dir, self.rnn.model_name, 'Token_Data')
-        file_name = 'token_data.npz'.format(self.rnn.model_name)
-        if not os.path.isdir(path):
-            os.makedirs(path)
+        path = os.path.join(self.runs_dir, self.model_name, 'Token_Data')
+        file_name = 'token_data.npz'.format(self.model_name)
         np.savez(os.path.join(path, file_name),
-                 token_list=self.rnn.corpus.token_list,
-                 token_id_dict=self.rnn.corpus.token_id_dict,
-                 probe_id_dict=self.rnn.corpus.probe_id_dict,  # this dict is relative to num_probes
-                 probe_list=self.rnn.corpus.probe_list,
-                 probe_cat_dict=self.rnn.corpus.probe_cat_dict,
-                 cat_list=self.rnn.corpus.cat_list,
-                 probe_cf_traj_dict=self.rnn.corpus.probe_cf_traj_dict)
+                 token_list=self.corpus.token_list,
+                 token_id_dict=self.corpus.token_id_dict,
+                 probe_id_dict=self.corpus.probe_id_dict,
+                 probe_list=self.corpus.probe_list,
+                 probe_cat_dict=self.corpus.probe_cat_dict,
+                 cat_list=self.corpus.cat_list,
+                 probe_cf_traj_dict=self.corpus.probe_cf_traj_dict,
+                 num_train_doc_ids=self.corpus.num_train_doc_ids) # TODO get rid of this and load form corpus data instead
+        ##########################################################################
+        # save corpus data
+        path = os.path.join(self.runs_dir, self.model_name, 'Token_Data')
+        file_name = 'corpus_data.npz'.format(self.model_name)
+        np.savez(os.path.join(path, file_name),
+                 num_train_doc_ids=self.corpus.num_train_doc_ids,
+                 tf_idf_mat=self.corpus.tf_idf_mat,
+                 lex_div_traj=self.corpus.lex_div_traj)
         ##########################################################################
         #  save configs_dict to npy
-        path = os.path.join(self.runs_dir, self.rnn.model_name, 'Configs')
+        path = os.path.join(self.runs_dir, self.model_name, 'Configs')
         file_name = 'configs_dict.npy'
-        np.save(os.path.join(path, file_name), self.rnn.configs_dict)
+        np.save(os.path.join(path, file_name), self.configs_dict)
+        ##########################################################################
+        print 'Saved token data and configs_dict'
 
 
     def remove_old_data(self, num_more_recent=5):
@@ -159,15 +202,14 @@ class RNN(RNNHelper):
         ##########################################################################
         # get runs log
         if os.path.isfile(self.log_path):
-            log_content = csv.reader(open(self.log_path, 'r'))
+            log_entries_list, headers = get_log_entries_list()
             ##########################################################################
             # make del_candidates_list
-            if log_content:
-                for row in log_content:
-                    if row[0].startswith(socket.gethostname()): # TODO don't need hostname
-                        model_name, best_avg_token_ba = row[0], row[-1]
-                        flavor = model_name.split('_')[-1]
-                        del_candidates_list.append((model_name, best_avg_token_ba, flavor))
+            if log_entries_list:
+                for log_entry in log_entries_list:
+                    model_name, best_avg_token_ba = log_entry[0], log_entry[-1]
+                    flavor = model_name.split('_')[-1]
+                    del_candidates_list.append((model_name, best_avg_token_ba, flavor))
             ##########################################################################
             # sort del_candidates_list
             sorted_del_candidates_list = sorted(del_candidates_list, key=itemgetter(2, 1))
@@ -187,7 +229,7 @@ class RNN(RNNHelper):
             ##########################################################################
             # remove log entries corresponding with models deleted above and if not completed (completed data is still informative)
             for model_name in model_names_deleted:
-                if not is_completed(model_name):
+                if not is_training_completed(model_name):
                     remove_log_entry(model_name)
         ##########################################################################
         else:
@@ -197,7 +239,7 @@ class RNN(RNNHelper):
     def make_log_entry(self):
         ##########################################################################
         # clean up dict for writing
-        configs_dict = self.rnn.configs_dict.copy()
+        configs_dict = self.configs_dict.copy()
         for entry_to_pop in ['flavor', 'model_name', 'corpus_name']:
             configs_dict.pop(entry_to_pop)
         ##########################################################################
@@ -215,7 +257,7 @@ class RNN(RNNHelper):
         # add new entry
         writer = csv.writer(open(self.log_path, 'a'))
         all_params_list = [str(configs_dict[key]) for key in configs_dict.keys()]
-        all_params_list.insert(0, self.rnn.model_name)
+        all_params_list.insert(0, self.model_name)
         all_params_list.append('0')  # completed
         all_params_list.append('0')  # best_token_ba
         writer.writerow(all_params_list)
@@ -226,7 +268,7 @@ class RNN(RNNHelper):
         log_content = csv.reader(open(self.log_path, 'r'))
         log_content_new = []
         for row in log_content:
-            if row[0] == self.rnn.model_name:
+            if row[0] == self.model_name:
                 row[-1] = format(best_avg_token_ba, '.3f')
                 row[-2] = int(completed)
             log_content_new.append(row)
@@ -240,9 +282,8 @@ class RNN(RNNHelper):
         ##########################################################################
         secs = int(abs(elapsed_start - time.time()))
         hours = int(float(secs) / 3600)
-        max_num_train_blocks = len(self.rnn.corpus.train_doc_ids) * self.rnn.num_epochs
         print '{} |Block Name: {}/{} Id: {:>4} |Batch: {:>10} |Elapsed: {:>2} hrs'.format(
-            self.rnn.model_name, block_name, max_num_train_blocks, block_id, num_mbs_trained, hours)
+            self.model_name, block_name, self.corpus.num_total_train_docs, block_id, num_mbs_trained, hours)
 
 
     def send_data_to_web_app(self):
@@ -257,47 +298,47 @@ class RNN(RNNHelper):
         ##########################################################################
         # delete dfs to save space, if specified
         if remove_dfs:
-            path = os.path.join(self.runs_dir, self.rnn.model_name, 'Data_Frame')
+            path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
             for file_name in sorted(os.listdir(path))[:-1]:
                 os.remove(os.path.join(path, file_name))
         ##########################################################################
         self.rnn.sess.close()
         tf.reset_default_graph()
-        print '{} Training Session Closed and Graph reset\n\n'.format(self.rnn.model_name)
+        print '{} Training Session Closed and Graph reset\n\n'.format(self.model_name)
 
 
-    def make_df(self, fast=False):
+    def make_df(self, fast=True):
         ##########################################################################
-        print 'Calculating hidden activations...'
+        print 'Making df...'
         ##########################################################################
         # inits
         tokens_in_mb = []
-        hidden_unit_labels = ['H{}'.format(i) for i in range(self.rnn.num_hidden_units)]
+        hidden_unit_labels = ['H{}'.format(i) for i in range(self.num_hidden_units)]
         df_column_labels = ['doc_name', 'probe', 'probe_id', 'Y', 'cat', 'token_pp'] + hidden_unit_labels
         mb_data_dict_keys = ['X'] + df_column_labels
         mb_data_dict = {key: [] for key in mb_data_dict_keys}
         df = pd.DataFrame(columns=df_column_labels)
-        probe_X = np.zeros((self.rnn.mb_size, self.rnn.bptt_steps), dtype=int)
-        probe_Y = np.zeros(self.rnn.mb_size, dtype=int)
+        probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
+        probe_Y = np.zeros(self.mb_size, dtype=int)
         num_tokens_in_batch = 0
-        probe_freq_dict = {probe: 0 for probe in self.rnn.corpus.probe_list}
+        probe_freq_dict = {probe: 0 for probe in self.corpus.probe_list}
         ##########################################################################
         # get mb_data_dict from each block_name and add to df
-        for block_name, block_id in self.rnn.corpus.gen_train_block_name_and_id(epochs=1, shuffle=False):
-            for (X, Y) in self.rnn.corpus.gen_batch(self.rnn.mb_size, self.rnn.bptt_steps, block_id):
-                tokens = [self.rnn.corpus.token_list[token_id] for token_id in X[:, -1]]
+        for block_name, block_id in self.corpus.gen_train_block_name_and_id(1, 'chronological'):
+            for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
+                tokens = [self.corpus.token_list[token_id] for token_id in X[:, -1]]
                 for n, token in enumerate(tokens):
                     ##########################################################################
                     # if token is probe, add data to mb_data_dict
-                    if token in self.rnn.corpus.probe_id_dict and token not in tokens_in_mb:
+                    if token in self.corpus.probe_id_dict and token not in tokens_in_mb:
                         if fast:
                             tokens_in_mb.append(token)
                         mb_data_dict['X'].append(X[n])
                         mb_data_dict['doc_name'].append(int(block_name))
                         mb_data_dict['probe'].append(token)
-                        mb_data_dict['probe_id'].append(self.rnn.corpus.probe_id_dict[token])
+                        mb_data_dict['probe_id'].append(self.corpus.probe_id_dict[token])
                         mb_data_dict['Y'].append(Y[n])
-                        mb_data_dict['cat'].append(self.rnn.corpus.probe_cat_dict[token])
+                        mb_data_dict['cat'].append(self.corpus.probe_cat_dict[token])
                         ##########################################################################
                         # build batch
                         probe_X[num_tokens_in_batch] = X[n]
@@ -306,9 +347,9 @@ class RNN(RNNHelper):
                         probe_freq_dict[token] += 1.0
                     ##########################################################################
                     # when batch ready, calculate acts_mat and pp_vec
-                    if num_tokens_in_batch == self.rnn.mb_size:
+                    if num_tokens_in_batch == self.mb_size:
                         [acts_mat, pp_vec] = self.rnn.sess.run(
-                            [self.rnn.last_hidden_state, self.rnn.pp_mat],
+                            [self.rnn.last_hidden_state, self.rnn.pp_vec],
                             feed_dict={self.rnn.x: probe_X, self.rnn.y: probe_Y})
                         ##########################################################################
                         # add acts_mat and pp_vec to mb_data_dict
@@ -319,11 +360,11 @@ class RNN(RNNHelper):
                         # reset batch
                         tokens_in_mb = []
                         num_tokens_in_batch = 0
-                        probe_X = np.zeros((self.rnn.mb_size, self.rnn.bptt_steps), dtype=int)
-                        probe_Y = np.zeros(self.rnn.mb_size, dtype=int)
+                        probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
+                        probe_Y = np.zeros(self.mb_size, dtype=int)
         ##########################################################################
         # convert mb_data_dict to df
-        num_data = len(mb_data_dict['token_pp'])  # discard leftover tokens for which no acts were calculated (because of mb)
+        num_data = len(mb_data_dict['token_pp'])  # discard leftover tokens for which no acts were calculated
         for df_column_label in df_column_labels:
             df[df_column_label] = mb_data_dict[df_column_label][:num_data]
         ##########################################################################
@@ -336,10 +377,93 @@ class RNN(RNNHelper):
         print 'Calculating test perplexity...'
         ##########################################################################
         test_pp_sum, num_batches, test_pp = 0, 0, 0
-        for (X, Y) in self.rnn.corpus.gen_batch(self.rnn.mb_size, self.rnn.bptt_steps, 'test'):
+        for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, 'test'):
             test_pp_batch = self.rnn.sess.run(self.rnn.mean_pp, feed_dict={self.rnn.x: X, self.rnn.y: Y})
             test_pp_sum += test_pp_batch
             num_batches += 1
         test_pp = int(test_pp_sum / num_batches)
         ##########################################################################
         return test_pp
+
+    def make_model_name(self, flavor):
+        ##########################################################################
+        # make model_name (flavor in name is required for data removal to work)
+        time_of_init = datetime.datetime.now().strftime('%m-%d-%H-%M')
+        model_name = '{}_{}'.format(time_of_init, flavor)
+        ##########################################################################
+        # exit if model name dir already exists
+        if os.path.isdir(os.path.join(self.runs_dir, model_name)):
+            sys.exit('rnnlab : Model name already exists. This is typically caused by starting two models '
+                     'within the same minute. Please try again.')
+        ##########################################################################
+        return model_name
+
+    def create_rnn(self, num_input_units, configs_dict):
+        ##########################################################################
+        flavor = configs_dict['flavor']
+        ##########################################################################
+        # init model
+        if flavor == 'lstm':
+            from lstm import LSTM
+            rnn = LSTM(num_input_units, configs_dict)
+        elif flavor == 'irnn':
+            from irnn import IRNN
+            rnn = IRNN(num_input_units, configs_dict)
+        elif flavor == 'srn':
+            from srn import SRN
+            rnn = SRN(num_input_units, configs_dict)
+        elif flavor == 'scrn':
+            from scrn import SCRN
+            rnn = SCRN(num_input_units, configs_dict)
+        else:
+            sys.exit('RNN flavor not recognized.')
+        ##########################################################################
+        return rnn
+
+
+    def make_configs_dict(self, user_configs, flavor):
+        ##########################################################################
+        # default configs
+        configs_dict = {
+            'bptt_steps': 7,
+            'num_hidden_units': 512,
+            'mb_size': 64,
+            'learning_rate': 0.001,
+            'weight_init': 'uus',
+            'act_function': 'sigmoid',
+            'bias': 1,
+            'leakage': 0.95,
+            'num_iterations': 20,
+            'num_reps': 20,
+            'block_order': 'chronological',
+            'optimizer': 'adagrad',
+            'save_ev': 100,
+            'model_name': self.make_model_name(flavor),
+            'flavor': flavor,
+            'corpus_name': None,
+            'vocab_file_name': None,
+            'freq_cutoff': None,
+            'probes_name': None}
+        ##########################################################################
+        # overwrite default config dict
+        overwritten_list = []
+        print 'Overwriting default configs with user configs:'
+        for user_config in user_configs:
+            config_name = user_config[0]
+            config_value = user_config[1]
+            config_value = False if config_value == 'False' else config_value
+            config_value = int(config_value) if config_value.isdigit() else config_value
+            if not config_value == 'default':
+                if config_name in configs_dict:
+                    print config_name, '{} -> {}'.format(configs_dict[config_name], config_value)
+                    configs_dict[config_name] = config_value
+                    overwritten_list.append(config_name)
+        ##########################################################################
+        # check that all required configs specified
+        for c in ['corpus_name']:
+            if c not in overwritten_list: sys.exit('rnnlab WARNING: Did not find "{}" in user configs'.format(c))
+        if 'freq_cutoff' not in overwritten_list and 'vocab_file_name' not in overwritten_list:
+            sys.exit('rnnlab WARNING: Did not find "freq_cutoff" or "vocab_file_name" in user configs')
+        if 'probes_name' not in overwritten_list: print 'rnnlab WARNING: "Did not find probes_name" in user_configs'
+        ##########################################################################
+        return configs_dict

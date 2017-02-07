@@ -1,5 +1,6 @@
 from rnn import RNN
-from utilities import gen_user_configs, load_rc, get_childes_data
+from utils import gen_user_configs, load_rnnlabrc
+
 # import matplotlib
 # matplotlib.use('tkagg') # for mac osx
 

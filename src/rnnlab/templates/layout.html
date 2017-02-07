@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+        <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.4.min.css" type="text/css" />
+        <script type="text/javascript" src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.4.min.js"></script>
+        <script type="text/javascript">
+            Bokeh.set_log_level("info");
+        </script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+        <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+        <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+        <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+        <meta charset="UTF-8">
+        <title>rnnlab ({{template_dict.hostname}})</title>
+    {% endblock %}
+</head>
+<body>
+    <div id="header">
+        <h1><a href="{{url_for('log')}}">rnnlab ({{template_dict.hostname}})</a></h1>
+        <h3>Last update: <i>{{template_dict.log_mtime}}</i></h3>
+    </div>
+
+    <div id="main">{% block main %}{% endblock %}</div>
+
+    <div id="footer">rnnlab version :  {{template_dict.version}}
+    </div>
+
+
+    <script type='text/javascript'>
+        var $Modal = $('#Modal');
+        $(document).ready(function() {
+            $('.close').click(function () {
+                $Modal.css('display', 'none');
+            });
+
+
+            $(".clickable-row").click(function() {
+                window.location = $(this).data("href");
+            });
+
+
+        });
+
+
+    </script>
+
+
+</body>
+</html>

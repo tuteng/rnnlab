@@ -1,4 +1,4 @@
-import os, sys, time
+import os
 from operator import itemgetter
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,8 +9,11 @@ from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import linkage, dendrogram
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
-from utilities import calc_probe_sim_mat, load_token_data, load_rc
 import pandas as pd
+
+
+from dbutils import calc_probe_sim_mat, load_token_data, load_rnnlabrc
+
 
 class DataBase:
     """
@@ -18,13 +21,13 @@ class DataBase:
     Calculates similarities between probes, and balanced accuracy, and can generate plots
 
     Automatically created during rnn training
-    Can also be instantiated outside of training for pos-hoc analysis
+    Browser app instantiates this class for data analysis
     """
 
     def __init__(self, configs_dict, df, block_name):
         ##########################################################################
         # define dfpath
-        runs_dir = load_rc('runs_dir')
+        runs_dir = load_rnnlabrc('runs_dir')
         self.dfpath = os.path.join(runs_dir, configs_dict['model_name'], 'Data_Frame',
                                    'df_block_{}.h5'.format(block_name))
         ##########################################################################
@@ -36,11 +39,7 @@ class DataBase:
         # load token data
         self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict,\
         self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict, \
-        self.probe_cf_traj_dict = load_token_data(runs_dir, self.model_name)
-        ##########################################################################
-        # calc instance variables
-        self.all_acts_df = self.make_all_acts_df()
-        self.probe_simmat = calc_probe_sim_mat(self.all_acts_df, self.probe_list)
+        self.probe_cf_traj_dict, self.num_train_doc_ids = load_token_data(self.model_name)
 
 
     def add_col(self,col_name, col_data):
@@ -72,10 +71,10 @@ class DataBase:
         # make cat_ba_dict (this is not really needed)
         cat_ba_dict = df_cat_ba.to_dict()['token_ba']
         ##########################################################################
-        # make token_ba_vec
-        token_ba_vec = self.df[['probe','token_ba']].groupby('probe').first()['token_ba'].as_matrix()
+        # make token_ba_list
+        token_ba_list = self.df[['probe','token_ba']].groupby('probe').first()['token_ba'].as_matrix()
         ##########################################################################
-        return cats_sorted_by_ba, cat_ba_dict, token_ba_vec
+        return cats_sorted_by_ba, cat_ba_dict, token_ba_list
 
 
     def make_token_acts_df(self, sel_probe):
@@ -87,13 +86,11 @@ class DataBase:
         return token_acts_df
 
 
-    def make_cat_acts_df(self, sel_cat, agg_fn='mean'):
+    def make_cat_acts_df(self, cat_to_query):
         ##########################################################################
-        print 'Making cat_acts_mat using "{}"...'.format(agg_fn)
-        ##########################################################################
-        sel_cat = sel_cat
-        df_cat = self.df.query("cat == @sel_cat")
-        cat_acts_df = df_cat.groupby('probe', sort=True).mean().filter(regex='H')  # TODO make sure this works
+        cat_to_query = cat_to_query
+        df_cat = self.df.query("cat == @cat_to_query")
+        cat_acts_df = df_cat.groupby('probe', sort=True).mean().filter(regex='H')
         ##########################################################################
         return cat_acts_df
 
@@ -104,7 +101,7 @@ class DataBase:
         ##########################################################################
         # group by probe (sort has to be True)
         if agg_fn == 'none':
-            all_acts_df = self.df.filter(regex='H') # TODO test if this works (need to sort it)
+            all_acts_df = self.df.filter(regex='H') # TODO build infrastructure to make this work
         else:
             all_acts_df = self.df.groupby('probe', sort=True).mean().filter(regex='H')
         ##########################################################################
@@ -115,6 +112,9 @@ class DataBase:
 
 
     def calc_cat_sim_mat(self):
+        ##########################################################################
+        # probe simmat
+        probe_simmat = calc_probe_sim_mat(self.make_all_acts_df(), self.probe_list)
         ##########################################################################
         # inits
         num_probes = len(self.probe_list)
@@ -131,7 +131,7 @@ class DataBase:
                 if i != j:
                     probe2 = self.probe_list[j]
                     cat2 = self.probe_cat_dict[probe2]
-                    sim = self.probe_simmat[i, j]
+                    sim = probe_simmat[i, j]
                     cat_sim_dict[cat1][cat2].append(sim)
         ##########################################################################
         # make category simmat
@@ -148,30 +148,32 @@ class DataBase:
 
 
 
-    def make_acts_2d_fig(self, sv_nums=(2,3), label_probe=False, is_titled=False):
+    def make_acts_2d_fig(self, sv_nums=(2,3), perplexity=30, label_probe=False, is_titled=False):
         ##########################################################################
         # choose seaborn style and palette
-        import seaborn as sns  # if globally imported, will change all other figs unpredictably
+        import seaborn as sns
         sns.set_style('white')
         palette = np.array(sns.color_palette("hls", len(self.cat_list)))
         ##########################################################################
+        # all_acts_df
+        all_acts_df = self.make_all_acts_df()
+        ##########################################################################
         # svd
-        u, s, v = linalg.svd(self.all_acts_df.values)  # row_singular_vectors, singular_values, column_singular_vectors
+        u, s, v = linalg.svd(all_acts_df.values)  # row_singular_vectors, singular_values, column_singular_vectors
         acts_2d_svd = u[:, sv_nums]
         ##########################################################################
         # tsne
-        acts_2d_tsne = TSNE().fit_transform(self.all_acts_df.values)
+        acts_2d_tsne = TSNE(perplexity=perplexity).fit_transform(all_acts_df.values)
         ##########################################################################
         # get cat for each probe for plotting
         acts_cats = [self.probe_cat_dict[probe] for probe in self.probe_list]
         ##########################################################################
         # fig settings
-        figsize = (12, 8)
+        figsize = (7, 3.25)
         title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 12
-        label_fontsize = 4
-        linewidth = 2.0
+        label_fontsize = 6
+        path_linewidth = 2.0
+        markersize = 8
         ##########################################################################
         # fig
         fig, axarr = plt.subplots(1, 2, figsize=figsize)
@@ -181,19 +183,20 @@ class DataBase:
         # axis
         for n, x in enumerate([acts_2d_svd, acts_2d_tsne]):
             palette_ids = [self.cat_list.index(cat) for cat in acts_cats]
-            axarr[n].scatter(x[:, 0], x[:, 1], lw=0, s=30, c=palette[palette_ids])
+            axarr[n].scatter(x[:, 0], x[:, 1], lw=0, s=markersize, c=palette[palette_ids])
             axarr[n].axis('off')
             axarr[n].axis('tight')
             descr_str = ', '.join(['sv {}: var {:2.0f}%'.format(i, s[i]) for i in sv_nums])
-            axarr[n].set_title(['SVD ({})'.format(descr_str), 't-SNE'][n], fontsize=title_font_size)
+            if is_titled: axarr[n].set_title(['SVD ({})'.format(descr_str), 't-SNE'][n], fontsize=title_font_size)
             ##########################################################################
             # add the labels for each cat
             for cat in self.cat_list:
                 x_ids = np.where(np.asarray(acts_cats) == cat)[0]
                 xtext, ytext = np.median(x[x_ids, :], axis=0)
-                txt = axarr[n].text(xtext, ytext, str(cat), fontsize=8, color=palette[self.cat_list.index(cat)])
+                txt = axarr[n].text(xtext, ytext, str(cat), fontsize=label_fontsize,
+                                    color=palette[self.cat_list.index(cat)])
                 txt.set_path_effects([
-                    PathEffects.Stroke(linewidth=5, foreground="w"),
+                    PathEffects.Stroke(linewidth=path_linewidth, foreground="w"),
                     PathEffects.Normal()])
             ##########################################################################
             # add the labels for each probe
@@ -201,10 +204,13 @@ class DataBase:
                 for probe in self.probe_list:
                     x_ids = np.where(np.asarray(self.probe_list) == probe)[0]
                     xtext, ytext = np.median(x[x_ids, :], axis=0)
-                    txt = axarr[n].text(xtext, ytext, str(probe), fontsize=8)
+                    txt = axarr[n].text(xtext, ytext, str(probe), fontsize=label_fontsize)
                     txt.set_path_effects([
-                        PathEffects.Stroke(linewidth=5, foreground="w"),
+                        PathEffects.Stroke(linewidth=path_linewidth, foreground="w"),
                         PathEffects.Normal()])
+        ##########################################################################
+        # layout
+        fig.tight_layout()
         ##########################################################################
         return fig
 
@@ -218,12 +224,9 @@ class DataBase:
         corr_mat = corr_mat_nans[~np.isnan(corr_mat_nans)]
         ##########################################################################
         # fig settings
-        figsize = (12, 8)
+        figsize = (9, 6)
         title_font_size = 16
         ax_font_size = 16
-        leg_font_size = 10
-        label_fontsize = 4
-        linewidth = 2.0
         ##########################################################################
         # fig
         fig, ax = plt.subplots(figsize=figsize)
@@ -239,43 +242,47 @@ class DataBase:
         # Hide the right and top spines
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
         ##########################################################################
         return fig
 
 
-    def gen_neighbor_name_and_sim(self, probe):
-        ##########################################################################
-        # convert probe_simmat to sim_tuples_list_list
-        sim_tuples_list_list = []
-        for row_id, row in enumerate(self.probe_simmat):
-            sim_tuples_list_list.append([(target, sim) for target, sim in zip(self.probe_list, row)])
+    def gen_neighbor_name_and_sim(self, neighbors_for_probe, probe):
         ##########################################################################
         # generate neighbors_name, neighbors_sim
-        neighbors_for_probe = sorted(sim_tuples_list_list[self.probe_id_dict[probe]], key=itemgetter(1), reverse=True)
         num_total_neighbors = len(neighbors_for_probe)
         for neighbor_id in range(num_total_neighbors):
             ##########################################################################
             neighbor_name = neighbors_for_probe[neighbor_id][0]
             neighbor_sim = neighbors_for_probe[neighbor_id][1]
-            if neighbor_id != 0: yield neighbor_name, neighbor_sim
+            if neighbor_id != 0:
+                ##########################################################################
+                yield neighbor_name, neighbor_sim
 
 
-    def make_neighbors_table_fig(self, cat, num_neighbors=10, num_trunc_cols=5, is_titled=False):
+    def make_custom_neighbors_table_fig(self, sel_probes, num_neighbors=10, num_trunc_cols=3, is_titled=False):
         ##########################################################################
-        # get col_labels
-        col_labels = self.cat_probe_list_dict[cat]
+        # probe simmat
+        probe_simmat = calc_probe_sim_mat(self.make_all_acts_df(), self.probe_list)
         ##########################################################################
         # inits
         neighbors_mat_list = []
         col_labels_list = []
         ##########################################################################
+        # reformat simmat
+        sim_tuples_list_list = []
+        for row_id, row in enumerate(probe_simmat):
+            sim_tuples_list_list.append([(target, sim) for target, sim in zip(self.probe_list, row)])
+        ##########################################################################
         # make neighbors_mat_list and col_labels_list
-        for i in range(0, len(col_labels), num_trunc_cols): # split col_labels into even sized lists
-            truncated_col_labels = col_labels[i:i + num_trunc_cols]
+        for i in range(0, len(sel_probes), num_trunc_cols):  # split sel_probes into even sized lists
+            truncated_col_labels = sel_probes[i:i + num_trunc_cols]
             neighbors_mat = np.chararray((num_neighbors, num_trunc_cols), itemsize=20)
-            neighbors_mat[:] = '' # initialize so that matplotlib can read table
+            neighbors_mat[:] = ''  # initialize so that matplotlib can read table
             for probe_id, probe in enumerate(truncated_col_labels):
-                generator = self.gen_neighbor_name_and_sim(probe)
+                neighbors_for_probe = sorted(sim_tuples_list_list[self.probe_id_dict[probe]], key=itemgetter(1),
+                                             reverse=True)
+                generator = self.gen_neighbor_name_and_sim(neighbors_for_probe, probe)
                 for neighbors_id in range(num_neighbors):
                     neighbor_name, neighbor_sim = next(generator)
                     neighbors_mat[neighbors_id, probe_id] = '{:>15} {:.2f}'.format(neighbor_name, neighbor_sim)
@@ -285,21 +292,77 @@ class DataBase:
             col_labels_list.append(truncated_col_labels)
         ##########################################################################
         # fig settings
+        title_font_size = 16
+        table_fontsize = 6
+        num_tables = len(neighbors_mat_list)
+        figsize = (3.0, 4)
+        ##########################################################################
+        # fig
+        fig, axarr = plt.subplots(num_tables, 1, figsize=tuple(figsize))
+        fig_name = '{} Block {} Nearest Neighbors of words in Custom List'.format(self.model_name, self.block_name)
+        if is_titled: fig.suptitle(fig_name, fontsize=title_font_size)
+        ##########################################################################
+        # ax
+        for n, neighbors_mat in enumerate(neighbors_mat_list):
+            axarr[n].axis('off')
+            table_ = axarr[n].table(cellText=neighbors_mat_list[n], colLabels=col_labels_list[n],
+                              loc='center', colWidths=[0.415] * num_trunc_cols)
+            table_.auto_set_font_size(False)
+            table_.set_fontsize(table_fontsize)
+        ##########################################################################
+        # layout
+        fig.tight_layout()
+        fig.subplots_adjust(hspace=0.05)  # make space between subplots
+        ##########################################################################
+        return fig
+
+
+    def make_neighbors_table_fig(self, cat, num_neighbors=10, num_trunc_cols=5, is_titled=True):
+        ##########################################################################
+        # probe simmat
+        probe_simmat = calc_probe_sim_mat(self.make_all_acts_df(), self.probe_list)
+        ##########################################################################
+        # get col_labels
+        col_labels = self.cat_probe_list_dict[cat]
+        ##########################################################################
+        # inits
+        neighbors_mat_list = []
+        col_labels_list = []
+        ##########################################################################
+        # reformat simmat
+        sim_tuples_list_list = []
+        for row_id, row in enumerate(probe_simmat):
+            sim_tuples_list_list.append([(target, sim) for target, sim in zip(self.probe_list, row)])
+        ##########################################################################
+        # make neighbors_mat_list and col_labels_list
+        for i in range(0, len(col_labels), num_trunc_cols): # split col_labels into even sized lists
+            truncated_col_labels = col_labels[i:i + num_trunc_cols]
+            neighbors_mat = np.chararray((num_neighbors, num_trunc_cols), itemsize=20)
+            neighbors_mat[:] = '' # initialize so that matplotlib can read table
+            for probe_id, probe in enumerate(truncated_col_labels):
+                neighbors_for_probe = sorted(sim_tuples_list_list[self.probe_id_dict[probe]], key=itemgetter(1),
+                                             reverse=True)
+                generator = self.gen_neighbor_name_and_sim(neighbors_for_probe, probe)
+                for neighbors_id in range(num_neighbors):
+                    neighbor_name, neighbor_sim = next(generator)
+                    neighbors_mat[neighbors_id, probe_id] = '{:>15} {:.2f}'.format(neighbor_name, neighbor_sim)
+            neighbors_mat_list.append(neighbors_mat)
+            length_diff = num_trunc_cols - len(truncated_col_labels)
+            for i in range(length_diff): truncated_col_labels.append(' ')  # add space so table can be read properly
+            col_labels_list.append(truncated_col_labels)
+        ##########################################################################
+        # fig settings
+        title_font_size = 16
         num_tables = len(neighbors_mat_list)
         nrows, ncols = num_neighbors, num_trunc_cols
         hcell, wcell = 0.3, 2.5
         hpad, wpad = 0.1, 0
         figsize = (ncols * wcell + wpad, (nrows * hcell + hpad) * num_tables)
-        title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 10
-        label_fontsize = 4
-        linewidth = 2.0
         ##########################################################################
         # fig
         fig, axarr = plt.subplots(num_tables,1, figsize=tuple(figsize))
         fig_name = '{} Block {} Nearest Neighbors of words in {}'.format(self.model_name, self.block_name, cat)
-        if is_titled: plt.title(fig_name, fontsize=title_font_size)
+        if is_titled: fig.suptitle(fig_name, fontsize=title_font_size)
         ##########################################################################
         # ax
         for n, neighbors_mat in enumerate(neighbors_mat_list):
@@ -308,35 +371,41 @@ class DataBase:
             axarr[n].axis('off')
             ##########################################################################
             # table sizing
-            the_table = axarr[n].table(cellText=neighbors_mat, colLabels=col_labels_list[n], loc='center')
-            table_props = the_table.properties()
+            table_ = axarr[n].table(cellText=neighbors_mat, colLabels=col_labels_list[n], loc='center')
+            table_props = table_.properties()
             table_cells = table_props['child_artists']
             for cell in table_cells: cell.set_height(0.1)
+        ##########################################################################
+        # layout
+        fig.tight_layout()
+        if is_titled: fig.subplots_adjust(top=0.925) # make room for main title
+        fig.subplots_adjust(hspace=0.2) # make sapce between subplots
         ##########################################################################
         return fig
 
 
-    def make_acts_dh_fig(self, sel_probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False): # TODO values ar ehigher than 1.0
+    def make_acts_dh_fig(self, probe=None, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
+        ##########################################################################
+        print 'Making custom probe activations dh with vmin : {}'.format(vmin)
         ##########################################################################
         # make acts_df
-        if sel_probe:
-            token_acts_df = self.make_token_acts_df(sel_probe)
+        if probe:
+            token_acts_df = self.make_token_acts_df(probe)
             acts_mat = np.asarray(token_acts_df)
         else:
-            acts_mat = self.all_acts_df.values
+            acts_mat = self.make_all_acts_df().values
+        ##########################################################################
+        print 'Acts mat | max: {:.2} min: {:.2}'.format(np.max(acts_mat), np.min(acts_mat))
         ##########################################################################
         # fig settings
-        figsize = (12, 8)
+        figsize = (9, 6)
         title_font_size = 16
         ax_font_size = 16
-        leg_font_size = 10
-        label_fontsize = 4
-        linewidth = 2.0
         ##########################################################################
         # fig
         fig, ax_heatmap = plt.subplots(figsize=figsize)
-        if sel_probe:
-            fig_name = '{} Block {} DH of acts for "{}" '.format(self.model_name, self.block_name, sel_probe)
+        if probe:
+            fig_name = '{} Block {} DH of acts for "{}" '.format(self.model_name, self.block_name, probe)
         else:
             fig_name = '{} Block {} DH of acts for all probes '.format(self.model_name, self.block_name)
         if is_titled: plt.title(fig_name, fontsize=title_font_size, y=1.2)
@@ -345,8 +414,8 @@ class DataBase:
         ax_heatmap.yaxis.tick_right()
         ax_heatmap.set_xlabel('Hidden Units', fontsize=ax_font_size)
         num_acts = len(acts_mat)
-        if sel_probe:
-            ax_heatmap.set_ylabel('{} Examples of "{}"'.format(num_acts, sel_probe), fontsize=ax_font_size)
+        if probe:
+            ax_heatmap.set_ylabel('{} Examples of "{}"'.format(num_acts, probe), fontsize=ax_font_size)
         else:
             ax_heatmap.set_ylabel('All {}  probes'.format(num_acts), fontsize=ax_font_size)
         divider = make_axes_locatable(ax_heatmap)
@@ -423,19 +492,17 @@ class DataBase:
         return fig
 
 
-    def make_cat_sim_dh_fig(self, num_colors = 0, vmin=0.0, vmax=1.0, is_titled=False):
+    def make_cat_sim_dh_fig(self, num_colors = 0, vmin=0.0, vmax=1.0, y_title=False, is_titled=False):
         ##########################################################################
         # calc cat simmat
         cat_simmat = self.calc_cat_sim_mat()
-        cat_simmat_labels = self.cat_list # TODO is this correct?
+        cat_simmat_labels = self.cat_list
         ##########################################################################
         # fig settings
-        figsize = (12, 8)
+        figsize = (3.40,3.40) # 12, 8
         title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 10
-        label_fontsize = 8
-        linewidth = 2.0
+        ax_font_size = 8
+        label_fontsize = 6
         ##########################################################################
         # fig
         fig, ax_heatmap = plt.subplots(figsize=figsize)
@@ -445,9 +512,9 @@ class DataBase:
         # axes
         ax_heatmap.yaxis.tick_right()
         divider = make_axes_locatable(ax_heatmap)
-        ax_dendleft = divider.append_axes("right", 2.0, pad=1.0, sharey=ax_heatmap)
-        ax_dendleft.set_frame_on(False)
-        ax_colorbar = divider.append_axes("left", 0.2, pad=0.5)
+        ax_denright = divider.append_axes("right", 0.5, pad=0.0, sharey=ax_heatmap)
+        ax_denright.set_frame_on(False)
+        ax_colorbar = divider.append_axes("top", 0.1, pad=0.2)
         ##########################################################################
         # dendrogram
         lnk0 = linkage(pdist(cat_simmat))
@@ -456,7 +523,7 @@ class DataBase:
         else:
             left_threshold = 0.5 * (lnk0[1 - num_colors, 2] +
                                     lnk0[-num_colors, 2])
-        dg0 = dendrogram(lnk0, ax=ax_dendleft,
+        dg0 = dendrogram(lnk0, ax=ax_denright,
                          orientation='right',
                          color_threshold=left_threshold,
                          no_labels=True)
@@ -466,16 +533,16 @@ class DataBase:
         z = z[:, dg0['leaves']]  # sorting columns for symmetry
         ##########################################################################
         # heatmap
-        max_extent = ax_dendleft.get_ylim()[1]
+        max_extent = ax_denright.get_ylim()[1]
         im = ax_heatmap.imshow(z[::-1], aspect='auto',
                                cmap=plt.cm.jet,
                                interpolation='nearest',
                                extent=(0, max_extent, 0, max_extent),
                                vmin=vmin, vmax=vmax)
         # colorbar
-        cb = plt.colorbar(im, cax=ax_colorbar, ticks=[vmin, vmax])
-        cb.ax.set_xticklabels([vmin, vmax])
-        cb.set_label('Correlation Coefficient', labelpad=-50, fontsize=ax_font_size)
+        cb = plt.colorbar(im, cax=ax_colorbar, ticks=[vmin, vmax], orientation='horizontal')
+        cb.ax.set_xticklabels([vmin, vmax], fontsize=ax_font_size)
+        cb.set_label('Correlation Coefficient', labelpad=-8, fontsize=ax_font_size)
         ##########################################################################
         # set heatmap ticklabels
         xlim = ax_heatmap.get_xlim()[1]
@@ -486,13 +553,14 @@ class DataBase:
         ylim = ax_heatmap.get_ylim()[1]
         nrows = len(cat_simmat_labels)
         halfyw = 0.5 * ylim / nrows
-        ax_heatmap.yaxis.set_ticks(np.linspace(halfyw, ylim - halfyw, nrows))
-        ax_heatmap.yaxis.set_ticklabels(np.array(cat_simmat_labels)[dg0['leaves']])
+        if y_title:
+            ax_heatmap.yaxis.set_ticks(np.linspace(halfyw, ylim - halfyw, nrows))
+            ax_heatmap.yaxis.set_ticklabels(np.array(cat_simmat_labels)[dg0['leaves']])
         # Hide all tick lines
         lines = (ax_heatmap.xaxis.get_ticklines() +
                  ax_heatmap.yaxis.get_ticklines() +
-                 ax_dendleft.xaxis.get_ticklines() +
-                 ax_dendleft.yaxis.get_ticklines())
+                 ax_denright.xaxis.get_ticklines() +
+                 ax_denright.yaxis.get_ticklines())
         plt.setp(lines, visible=False)
         # set label rotation and fontsize
         xlbls = ax_heatmap.xaxis.get_ticklabels()
@@ -502,30 +570,39 @@ class DataBase:
         plt.setp(ylbls, rotation=0)
         plt.setp(ylbls, fontsize=label_fontsize)
         # make dendrogram labels invisible
-        plt.setp(ax_dendleft.get_yticklabels() + ax_dendleft.get_xticklabels(),
+        plt.setp(ax_denright.get_yticklabels() + ax_denright.get_xticklabels(),
                  visible=False)
+        ##########################################################################
+        # layout
+        fig.subplots_adjust(bottom=0.2) # make room for tick labels
+        fig.tight_layout()
         ##########################################################################
         return fig
 
 
-    def make_cat_cluster_fig(self, cat, is_titled=False):
-        ##########################################################################
-        # fig settings
-        figsize = (12, 10)
-        title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 10
-        linewidth = 2.0
-        rcParams['lines.linewidth'] = 2.0
-        ##########################################################################
-        # fig
-        fig, ax = plt.subplots(figsize=figsize)
-        fig_name = '{} Block {} Clustering of {}'.format(self.model_name, self.block_name, cat)
-        if is_titled: plt.title(fig_name, fontsize=title_font_size)
+    def make_cat_cluster_fig(self, cat, xlim=False, bottom_off=True, num_pobes_limit=20, is_titled=False):
         ##########################################################################
         # get cat_acts_mat
         cat_acts_df = self.make_cat_acts_df(cat)
         probes_in_cat = cat_acts_df.index.tolist()
+        num_probes_in_cat = len(probes_in_cat)
+        ##########################################################################
+        # limit data (to fit into small publication fig)
+        if num_pobes_limit and num_probes_in_cat > num_pobes_limit:
+            ids = np.random.choice(range(num_probes_in_cat), num_pobes_limit, replace=False)
+            cat_acts_df = cat_acts_df.iloc[ids]
+            probes_in_cat = [probes_in_cat[id] for id in ids]
+        ##########################################################################
+        # fig settings
+        figsize = (3.2, 3.2) # 8,8
+        title_font_size = 16
+        rcParams['lines.linewidth'] = 2.0
+        leaf_font_size = 8
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize)
+        fig_name = '{} Block {} Clustering of {}'.format(self.model_name, self.block_name, cat)
+        if is_titled: fig.suptitle(fig_name, fontsize=title_font_size)
         ##########################################################################
         # dendrogram
         dist_matrix = pdist(cat_acts_df.values, 'euclidean')
@@ -534,38 +611,43 @@ class DataBase:
                    ax=ax,
                    leaf_label_func=lambda x: probes_in_cat[x],
                    orientation='right',
-                   leaf_font_size=10)
+                   leaf_font_size=leaf_font_size)
         ##########################################################################
         # axis
         ax.tick_params(axis='both', which='both', top='off', right='off', left='off')
         ax.spines['right'].set_visible(False)
         ax.spines['left'].set_visible(False)
         ax.spines['top'].set_visible(False)
-        ax.set_xlim([0, 1])
-        plt.tight_layout()
+        if bottom_off:
+            ax.xaxis.set_ticklabels([]) # hides ticklabels
+            ax.tick_params(axis='both', which='both', bottom='off')
+            ax.spines['bottom'].set_visible(False)
+        if xlim: ax.set_xlim([0, xlim])
+        ##########################################################################
+        # layout
+        fig.tight_layout()
+        if is_titled: fig.subplots_adjust(top=0.925) # make room for main title
         ##########################################################################
         return fig
 
 
-    def make_two_cat_cluster_fig(self, cat1, cat2, is_titled=False): # TODO use *args here for arbitrary num cats
+    def make_custom_cat_clust_fig(self, cats):
         ##########################################################################
         # fig settings
-        figsize = (12, 10)
+        figsize = (6, 6)
         title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 10
-        linewidth = 2.0
+        leaf_font_size = 6
         rcParams['lines.linewidth'] = 2.0
         ##########################################################################
         # fig
         fig, ax = plt.subplots(figsize=figsize)
-        fig_name = '{} Block {} Clustering of {} and {}'.format(self.model_name, self.block_name, cat1, cat2)
-        if is_titled: plt.title(fig_name, fontsize=title_font_size)
+        fig_name = '{} Block {} Custom Clustering'.format(self.model_name, self.block_name)
+        if False: plt.title(fig_name, fontsize=title_font_size)
         ##########################################################################
         # make cat_acts_mat
         cats_acts_mat_list = []
         cats_probe_list = []
-        for cat in [cat1, cat2]:
+        for cat in cats:
             cat_acts_df = self.make_cat_acts_df(cat)
             cats_acts_mat_list.append(cat_acts_df.values)
             cats_probe_list += cat_acts_df.index.tolist()
@@ -576,16 +658,15 @@ class DataBase:
         linkages = linkage(dist_matrix, method='complete')
         dendrogram(linkages,
                    ax=ax,
-                   labels = cats_probe_list,  # leaf_label_func=lambda x: cats_probe_list[x],
+                   labels = cats_probe_list,
                    orientation='right',
-                   leaf_font_size=10)
+                   leaf_font_size=leaf_font_size)
         ##########################################################################
         # axis
         ax.tick_params(axis='both', which='both', top='off', right='off', left='off')
         ax.spines['right'].set_visible(False)
         ax.spines['left'].set_visible(False)
         ax.spines['top'].set_visible(False)
-        ax.set_xlim([0, 20])
         ##########################################################################
         return fig
 
@@ -593,7 +674,7 @@ class DataBase:
     def make_ba_breakdown_fig(self, is_titled=False):
         ##########################################################################
         # get_ba_breakdown_data
-        cats_sorted_by_ba, cat_ba_dict, token_ba_vec = self.get_ba_breakdown_data()
+        cats_sorted_by_ba, cat_ba_dict, token_ba_list = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
         figsize = (12, 8)
@@ -618,7 +699,7 @@ class DataBase:
         for cat_id, cat in enumerate(cats_sorted_by_ba):
             cat_probe_list = self.cat_probe_list_dict[cat]
             cat_probe_ids = [self.probe_list.index(e_token) for e_token in cat_probe_list]
-            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_vec[cat_probe_ids]
+            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_list[cat_probe_ids]
             ax.plot(xs, ys, 'b.', alpha=1)
         ##########################################################################
         return fig
@@ -627,14 +708,13 @@ class DataBase:
     def make_ba_breakdown_scatter_fig(self, is_titled=False):
         ##########################################################################
         # make cat_probe_list_dict and cats_sorted_by_ba
-        cats_sorted_by_ba, cat_ba_dict, token_ba_vec = self.get_ba_breakdown_data()
+        cats_sorted_by_ba, cat_ba_dict, token_ba_list = self.get_ba_breakdown_data()
         ##########################################################################
         # fig settings
         figsize = (12, 8)
         title_font_size = 16
         ax_font_size = 16
         leg_font_size = 10
-        linewidth = 2.0
         ##########################################################################
         # fig
         fig, ax = plt.subplots(figsize=figsize)
@@ -667,7 +747,7 @@ class DataBase:
             annotated_y_ints_long_words_curr_cat = []
             cat_probe_list = self.cat_probe_list_dict[cat]
             cat_probe_ids = [self.probe_list.index(e_token) for e_token in cat_probe_list]
-            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_vec[cat_probe_ids]
+            xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_list[cat_probe_ids]
             ax.plot(xs, ys, 'b.', alpha=0) # this needs to be plot for annotation to work
             ##########################################################################
             # annotate points
@@ -689,20 +769,61 @@ class DataBase:
 
     
 
-    def make_ba_breakdown_avg_line(self, cats_sorted_by_ba_master=None): # for model comparison
+    def make_cat_confusion_mat_fig(self):
         ##########################################################################
-        # get_ba_breakdown_data
-        cats_sorted_by_ba, cat_ba_dict, token_ba_vec = self.get_ba_breakdown_data()
+        import seaborn as sns
+        sns.set_style('white')
         ##########################################################################
-        # set master sorter if not specified (but only do this once for fair model comparison)
-        if cats_sorted_by_ba_master is None:
-            cats_sorted_by_ba_master = cats_sorted_by_ba
+        # get data
+        runs_dir = load_rnnlabrc('runs_dir')
+        path = os.path.join(runs_dir, self.model_name, 'Balanced_Accuracy')
+        file_name = 'cat_confusion_mat_data_block_{}.npz'.format(self.block_name)
+        npzfile = np.load(os.path.join(path, file_name))
+        hits_by_cat_dict = npzfile['hits_by_cat_dict'].item()
+        fas_by_cat_dict = npzfile['fas_by_cat_dict'].item()
+        num_cats = len(fas_by_cat_dict)
+        cats = sorted(fas_by_cat_dict.keys())
         ##########################################################################
-        # make line
-        ba_breakdown_avg_line = np.zeros(len(cat_ba_dict))
-        for cat_id, cat in enumerate(cats_sorted_by_ba_master):
-            cat_probe_list = self.cat_probe_list_dict[cat]
-            cat_probe_ids = [self.probe_list.index(probe) for probe in cat_probe_list]
-            ba_breakdown_avg_line[cat_id] = np.mean(token_ba_vec[cat_probe_ids])
+        # make confusion mat ( each element normalized by tot number of combinations)
+        cat_confusion_mat = np.zeros((num_cats, num_cats), dtype=float)
+        for row_id, row_cat in enumerate(cats):
+            for col_id, col_cat in enumerate(cats):
+                num_probes_row_cat = len(self.cat_probe_list_dict[row_cat])
+                num_probes_col_cat = len(self.cat_probe_list_dict[col_cat])
+                n = num_probes_row_cat * num_probes_col_cat - num_probes_row_cat
+                if row_id == col_id:  # hits
+                    hits = float(hits_by_cat_dict[row_cat][col_cat])
+                    cat_confusion_mat[row_id, col_id] = hits / n *100
+                else:  # fas
+                    fas = float(fas_by_cat_dict[row_cat][col_cat])
+                    cat_confusion_mat[row_id, col_id] = fas / n *100
         ##########################################################################
-        return ba_breakdown_avg_line, cats_sorted_by_ba_master
+        # fig settings
+        figsize = (10, 10)
+        ##########################################################################
+        # fig
+        fig, ax = plt.subplots(figsize=figsize)
+        ##########################################################################
+        # mask
+        mask = np.zeros_like(cat_confusion_mat, dtype=np.bool)
+        mask[np.triu_indices_from(mask, 1)] = True
+        ##########################################################################
+        # plot
+        sns.heatmap(cat_confusion_mat.astype(np.int), ax=ax, square=True, annot=True,
+                    annot_kws={"size": 6}, cbar_kws={"shrink": .5},
+                    vmin=0, vmax=100, cmap='jet', mask=mask, fmt='d')
+        ##########################################################################
+        # colorbar
+        cbar = ax.collections[0].colorbar
+        cbar.set_ticks([0, 50, 100])
+        cbar.set_ticklabels(['0%', '50%', '100%'])
+        ##########################################################################
+        # ax (needs to be below plot for axes to be labeled)
+        ax.set_yticklabels(sorted(cats, reverse=True), rotation=0)
+        ax.set_xticklabels(cats, rotation=90)
+        for t in ax.texts: t.set_text(t.get_text() + "%")
+        ##########################################################################
+        # layout
+        plt.tight_layout()
+        ##########################################################################
+        return fig

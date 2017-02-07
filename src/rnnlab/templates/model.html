@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+
+{% block head %}
+  {{ super() }}
+{% endblock %}
+
+{% block main %}
+
+    <h1>{{model_name1}}</h1>
+
+    <form action="{{url_for('model', model_name1=model_name1)}}">
+
+        <div id="btns-top">
+            {% for btn_name in btn_names_top %}
+                <div class="dropdown">
+                    <button name="{{btn_name}}" value="clicked" class="dropbtn">{{btn_name}}</button>
+                    {% if btn_name != 'avgtrajBtn' %}
+                        <div class="dropdown-content">
+                            {% for block_name in block_names1 %}
+                            <button name="{{btn_name}}" value="{{block_name}}"><b>{{loop.index0+1}}.</b> {{block_name}}</button>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+
+        <div id="btns-bottom">
+            {% for btn_name in btn_names_bottom %}
+                <div class="dropdown">
+                    <button name="{{btn_name}}" value="clicked" class="dropbtn">{{btn_name}}</button>
+                    {% if not btn_name in ['delete', 'compprobes', 'freqhist'] %}
+                        <div class="dropdown-content">
+                            {% for block_name in block_names1 %}
+                                <button name="{{btn_name}}" value="{{block_name}}"><b>{{loop.index0+1}}.</b> {{block_name}}</button>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+
+        {% if model_names2 %}
+            <h3>Compare to Model :</h3>
+            <div id="accordion">
+                {% for model_name2 in model_names2 %}
+                    <h3>{{model_name2}}</h3>
+                    <div>
+                        {% for block_name2 in block_names2_dict[model_name2] %}
+                            <button name="comp2models" value="{{loop.index0}}+{{model_name2}}+{{block_name2}}" class="dropbtn">{{block_name2}}</button>
+                         {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <h3>No models to compare to</h3>
+        {% endif %}
+
+    </form>
+
+
+    {% if imgs %}
+        <div id="Modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Model Name: {{model_name1}}</h2>
+                <h3>{{imgs_desc}}</h3>
+                {% for img in imgs %}
+                    {% if img.script %}
+                        {{ img.div|safe }}
+                        {{ img.script|safe }}
+                    {% else %}
+                        <img src="data:image/png;base64,{{ img }}">
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+
+
+     <script type='text/javascript'>
+        $(document).ready(function() {
+            $('#accordion').accordion({event: "mouseover"})
+        });
+    </script>
+
+
+
+
+{% endblock %}

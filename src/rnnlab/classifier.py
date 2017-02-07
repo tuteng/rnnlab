@@ -1,4 +1,4 @@
-from rnnlab import load_rc
+from rnnlab import load_rnnlabrc
 import tensorflow as tf
 import numpy as np
 import math, time, os, socket
@@ -19,7 +19,7 @@ def calc_hca(model_name, x_data, y_data, hc_epochs):
     LEARNING_RATE = 0.001
     USE_TENSORBOARD = False
     ####################################################################################################
-    runs_dir = load_rc('runs_dir')
+    runs_dir = load_rnnlabrc('runs_dir')
     ####################################################################################################
     # make run_name for tensorboard
     run_num = 1

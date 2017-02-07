@@ -1,547 +1,344 @@
-import os, datetime, pytz, csv, socket, base64, shutil
-from flask import Flask, session
+import time, socket
+from flask import Flask, redirect, url_for
 from flask import render_template
 from flask import request
-from flask import send_file
-from itertools import cycle
-import pandas as pd
-import numpy as np
-import StringIO
-from database import DataBase
-from trajdatabase import TrajDataBase
-from utilities import load_rc
-from utilities import remove_log_entry
-from utilities import remove_model_data
 from bokeh import mpl
 from bokeh.models import Range1d
-from bokeh.models import HoverTool
-from bokeh.embed import components
 from bokeh.models import ColumnDataSource
+from bokeh.models import HoverTool
 from bokeh.models.glyphs import Line
-from bokeh.plotting import figure, show, output_file
 from bokeh.palettes import Category10
-from itertools import groupby
-from operator import itemgetter
-import matplotlib.pyplot as plt
-import pandas as pd
+from itertools import cycle
+
+from utils import get_log_mtime
+from utils import get_block_names_to_display
+from utils import make_imgs
+from utils import delete_model
+from utils import load_custom_probes_tuples
+from utils import load_filtered_log_entries
+from utils import make_block_names2_dict
+from utils import load_database
+from utils import load_trajdatabase
+from utils import make_neighbors_rbo_fig
+from utils import make_ba_bds_fig
+from utils import make_avg_token_ba_trajs_fig
+from utils import make_test_pp_trajs_fig
+from utils import make_probe_sim_comp_fig
+from utils import block_to_iteration
+from utils import make_probe_freq_hist_fig
+from utils import make_cat_count_pie_chart_fig
+from utils import make_corpus_traj_fig
+from utils import load_configs_dict
+
 
 ##########################################################################
 app = Flask(__name__)
 ##########################################################################
-DEFAULTS = {'sel_block_name': 'Select',
-            'sel_cat': 'Select',
-            'sel_probe': 'Select',
-            'sel_maction': 'Select',
-            'mactions': ['Select','Compare', 'Delete'],
-            'headers': ['model_name', 'optimizer','learning_rate',
-                        'bptt_steps', 'num_hidden_units', 'num_iterations', 'best_token_ba'],
-            'allow_incomplete' : True}
+# defaults
+btn_names_top = ['avgtrajBtn', 'dimredBtn', 'catsimBtn', 'bdBtn',
+             'clustBtn', 'neighborsBtn', 'batrajBtn', 'catconfBtn']
+
+btn_names_bottom = ['compprobes', 'customn', 'custompdh', 'freqhist', 'customclust', 'delete']
+
+headers_to_display = ['model_name', 'block_order',
+    'num_reps', 'num_iterations', 'completed', 'best_token_ba']
 ##########################################################################
-log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
-##########################################################################
-
-
-def get_trained_block_names(model_name, default_blocks=('0001','1000','2000','2800')):
-    ##########################################################################
-    runs_dir = os.path.abspath(load_rc('runs_dir'))
-    path = os.path.join(runs_dir, model_name, 'Data_Frame')
-    ##########################################################################
-    trained_block_names = [DEFAULTS['sel_block_name'], 'Trajectory']
-    for b in default_blocks:
-        if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(b))):
-            trained_block_names.append(b)
-    ##########################################################################
-    # append last available block_name (get second to last one to prevent concurrentreading and writing )
-    saved_df_filenames = sorted([b for b in os.listdir(path) if b.startswith('df')])
-    if len(saved_df_filenames) > 2:
-        last_block_name = filter(lambda x: x.isdigit(), os.path.splitext(saved_df_filenames[-2])[0])
-        if not default_blocks[-1] in trained_block_names:
-            trained_block_names.append(last_block_name)
-    ##########################################################################
-    return trained_block_names
-
-
-def get_requests():
-    ##########################################################################
-    sel_model_name = request.args.get('model_name')
-    sel_block_name = request.args.get('block_name')
-    if not sel_block_name: sel_block_name = DEFAULTS['sel_block_name']
-    sel_probe = request.args.get('probe')
-    if not sel_probe: sel_probe = DEFAULTS['sel_probe']
-    sel_cat = request.args.get('cat')
-    if not sel_cat: sel_cat = DEFAULTS['sel_cat']
-    sel_cat2 = request.args.get('cat2')
-    if not sel_cat2: sel_cat = DEFAULTS['sel_cat']
-    sel_maction = request.args.get('maction')
-    if not sel_maction: sel_maction = DEFAULTS['sel_maction']
-    ##########################################################################
-    return sel_model_name, sel_block_name, sel_probe, sel_cat, sel_cat2, sel_maction
-
-
-def load_databases(model_name, block_name):
-    ##########################################################################
-    # load configs
-    runs_dir = os.path.abspath(load_rc('runs_dir'))
-    path = os.path.join(runs_dir, model_name, 'Configs')
-    file_name = 'configs_dict.npy'
-    configs_dict = dict(np.load(os.path.join(path, file_name)).item())
-    ##########################################################################
-    # make database
-    if block_name != 'Trajectory':
-        print 'Loading database for {} {}...'.format(model_name, block_name)
-        path = os.path.join(runs_dir, model_name, 'Data_Frame')
-        file_name = 'df_block_{}.h5'.format(block_name)
-        df = pd.read_hdf(os.path.join(path, file_name), 'df')
-        database = DataBase(configs_dict, df, block_name)
-    else:
-        database = None
-    ##########################################################################
-    # make trajdatabase
-    print 'Loading trajdatabase for {}...'.format(model_name)
-    trajdatabase = TrajDataBase(configs_dict)
-    ##########################################################################
-    return database, trajdatabase
-
-
-def get_log_mtime():
-    ##########################################################################
-    utc_last_updated = datetime.datetime.fromtimestamp(
-        os.path.getmtime(log_path)).replace(tzinfo=pytz.utc)
-    log_mtime_unformatted = utc_last_updated.astimezone(pytz.timezone('America/Los_Angeles'))
-    format = "%Y-%m-%d %H:%M"
-    log_mtime = log_mtime_unformatted.strftime(format)
-    ##########################################################################
-    return log_mtime
-
-
-def load_filtered_log_entries():
-    ##########################################################################
-    # get log
-    with open(log_path, 'r') as f:
-        reader = csv.reader(f)
-        log_content = []
-        for line in reader: log_content.append(line)
-    headers = log_content[0]
-    ##########################################################################
-    col_ids = [headers.index(header) for header in list(DEFAULTS['headers'])]
-    filtered_headers = [i for n, i in enumerate(headers) if n in col_ids]
-    check_completed = 0 if DEFAULTS['allow_incomplete'] else 1
-    filtered_log_entries = [[i for n, i in enumerate(log_entry) if n in col_ids]
-                            for log_entry in log_content[1:]
-                            if int(log_entry[-2]) == check_completed
-                            and float(log_entry[-1]) >= 50.0] # prevents concurrent reading and writing
-    ##########################################################################
-    # reverse so that newest entries are on top
-    filtered_log_entries = filtered_log_entries[::-1]
-    ##########################################################################
-    return filtered_log_entries, filtered_headers
-
-
-def get_model_names_to_compare(flavor, block_name):
-    ##########################################################################
-    # get model_names_same_flavor
-    filtered_log_entries, filtered_headers = load_filtered_log_entries()
-    model_names_same_flavor = [entry[0] for entry in filtered_log_entries if entry[0].endswith(flavor)]
-    ##########################################################################
-    model_names_to_compare = []
-    for model_name in model_names_same_flavor:
-        ##########################################################################
-        # get trained block_names
-        runs_dir = os.path.abspath(load_rc('runs_dir'))
-        path = os.path.join(runs_dir, model_name, 'Data_Frame')
-        saved_file_names = sorted([b for b in os.listdir(path) if b.startswith('df')])
-        trained_block_names = [filter(lambda x: x.isdigit(), os.path.splitext(saved_file_name)[0])
-                               for saved_file_name in saved_file_names]
-        ##########################################################################
-        # make model_names_to_compare
-        if block_name in trained_block_names:
-            model_names_to_compare.append(model_name)
-    ##########################################################################
-    return model_names_to_compare
-
-
-def get_custom_probes():
-    ##########################################################################
-    custom_probes = []
-    num_probe_classes = 0
-    prev_probe_class = None
-    with open(os.path.join('static', 'custom_probes.txt'), 'r') as f:
-        for line in f.readlines():
-            probe = line.split()[0]
-            probe_class = line.split()[1]
-            custom_probes.append((probe, probe_class))
-            if probe_class != prev_probe_class: num_probe_classes += 1
-            prev_probe_class = probe_class
-    ##########################################################################
-    return custom_probes, num_probe_classes
 
 
 @app.route('/', methods=['GET', 'POST'])
-def home():
-    ##########################################################################
-    # inits
-    bokeh_head = """
-        <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.4.min.css" type="text/css" />
-        <script type="text/javascript" src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.4.min.js"></script>
-        <script type="text/javascript">
-            Bokeh.set_log_level("info");
-        </script>
-        """
-    probes = [DEFAULTS['sel_probe']]
-    cats = [DEFAULTS['sel_cat'], 'Custom List']
-    cats2 = [DEFAULTS['sel_cat']]
-    block_names = [DEFAULTS['sel_block_name']]
-    mactions = DEFAULTS['mactions']
-    button_class = 'button-on'
-    acts_2d_img = None
-    token_acts_dh_img = None
-    token_corcoeff_hist_img = None
-    acts_dh_img = None
-    ba_breakdown_scatter_img = {}
-    ba_breakdow_img = None
-    cat_cluster_img = None
-    cat_sim_dh_img = None
-    neighbors_table_img = None
-    token_ba_trajs_img = {}
-    test_pp_traj_img = {}
-    avg_token_ba_traj_img = {}
-    cfreq_traj_img = None
-    ba_pp_mw_corr_img = None
-    cats_sorted_by_ba_master = None
-    ba_comparison_reference_img = None
-    ##########################################################################
-    print '\nLoaded home'
-    ##########################################################################
-    # load any requests
-    sel_model_name, sel_block_name, sel_probe, sel_cat, sel_cat2, sel_maction = get_requests()
-    ##########################################################################
-    # if specified, delete model
-    if sel_maction == 'Delete':
-        remove_log_entry(sel_model_name)
-        remove_model_data(sel_model_name)
+def log():
     ##########################################################################
     # get log entries
-    log_entries, headers = load_filtered_log_entries()
+    log_entries, headers = load_filtered_log_entries(headers_to_display)
+    if not log_entries:
+        headers = 'Log is empty'.split()
     ##########################################################################
-    if log_entries:
-        ##########################################################################
-        # if not model_name selected, select first as default, store in session
-        if not sel_model_name or sel_maction == 'Delete':
-            sel_model_name = log_entries[0][0]
-            session['model_name'] = None
-            session['block_name'] = None
-        ##########################################################################
-        # if different_model_name selected, set block_name to default
-        if session['model_name'] != sel_model_name and session['block_name'] != 'Trajectory':
-            sel_block_name = DEFAULTS['sel_block_name']
-        session['model_name'] = sel_model_name
-        session['block_name'] = sel_block_name
-        ##########################################################################
-        # only display trained block_names in dropdown
-        block_names = get_trained_block_names(sel_model_name)
-        ##########################################################################
-        if sel_block_name != DEFAULTS['sel_block_name']:
-            ##########################################################################
-            if sel_maction == 'Compare':
-                button_class = 'button-off' # turn off all buttons not used for comparison
-                num_comparisons = 5  # TODO this needs to be dynamically set
-                palette = cycle(Category10[num_comparisons])
-                #########################################################################
-                # get ba_breakdown_avg_lines for all models in log that have trained to sel_block_name
-                flavor = sel_model_name.split('_')[1]
-                ba_breakdown_avg_lines = []
-                for model_name in get_model_names_to_compare(flavor, sel_block_name):
-                    database, trajdatabase = load_databases(model_name, sel_block_name)
-                    ba_breakdown_avg_line, cats_sorted_by_ba_master = \
-                        database.make_ba_breakdown_avg_line(cats_sorted_by_ba_master)
-                    ba_breakdown_avg_lines.append(ba_breakdown_avg_line)
-                #########################################################################
-                # fig settings
-                figsize = (12, 8)
-                title_font_size = 16
-                ax_font_size = 16
-                leg_font_size = 10
-                linewidth = 2.0
-                ##########################################################################
-                # fig
-                fig, ax = plt.subplots(figsize=figsize)
-                ##########################################################################
-                # axes
-                ax.set_xlabel('Categories', fontsize=ax_font_size)
-                ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
-                ax.set_xticks(np.arange(len(database.probe_list)) + 0.5, minor=False)
-                ax.set_xticklabels(cats_sorted_by_ba_master, minor=False, fontsize=leg_font_size, rotation=90)
-                ax.set_xlim([0, len(database.cat_list) + 0.5])
-                ax.yaxis.grid(True)
-                ##########################################################################
-                # plot
-                num_cats = len(database.cat_list)
-                x = range(num_cats)
-                for n, ba_breakdown_avg_line in enumerate(ba_breakdown_avg_lines):
-                    color = next(palette)
-                    ax.plot(x, ba_breakdown_avg_line, '-', color=color, linewidth=1.0)
-                    ax.plot(x, ba_breakdown_avg_line, '.', color=color, markersize=15.0, label='srn {}'.format(n))
-                ##########################################################################
-                plt.legend(fontsize=leg_font_size, loc='best')
-                plt.tight_layout()
-                ##########################################################################
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                ba_comparison_reference_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            elif sel_block_name == 'Trajectory': # this loads only trajectory data for faster browser experience
-                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
-                ##########################################################################
-                # make test_pp_traj_img
-                print 'Making test_pp_traj_img'
-                fig = trajdatabase.make_test_pp_traj_fig()
-                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, save')
-                p.y_range=Range1d(0, 500)
-                p.xgrid.grid_line_color = None
-                p.toolbar.logo = None
-                p.plot_width = 1200
-                test_pp_traj_img['script'], test_pp_traj_img['div'] = components(p)
-                ##########################################################################
-                # make avg_token_ba_traj_img
-                print 'Making avg_token_ba_traj_img'
-                fig = trajdatabase.make_avg_token_ba_traj_fig()
-                p = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, save')
-                p.y_range = Range1d(50, 80)
-                p.xgrid.grid_line_color = None
-                p.toolbar.logo = None
-                p.plot_width=1200
-                avg_token_ba_traj_img['script'], avg_token_ba_traj_img['div'] = components(p)
-                ##################################q########################################
-                # make avg_token_ba_traj_img
-                print 'Making ba_pp_mw_corr_img'
-                fig = trajdatabase.make_ba_pp_window_corr_fig()
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                ba_pp_mw_corr_img = base64.b64encode(figfile.getvalue())
-            ##################################q########################################
-            elif sel_cat == 'Custom List':
-                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
-                custom_probes, num_probe_classes = get_custom_probes()
-                palette = cycle(Category10[max(3, num_probe_classes)]) # category10 minimum is 3
-                ##########################################################################
-                # custom list token ba trajectories
-                n = 0
-                for probe_class, group in groupby(custom_probes, itemgetter(1)):
-                    sel_probes = [i[0] for i in list(group)]
-                    fig_, x, ys, _ = trajdatabase.make_token_ba_trajs_fig(sel_probes, sel_cat)
-                    if n == 0: fig = fig_
-                    n +=1
-                    df = pd.DataFrame(ys)
-                    avg_ys = df.mean()
-                    std_ys = df.std()
-                    n_ys = len(df)
-                    se_ys = std_ys / (n_ys**0.5)
-                    import scipy
-                    confiv_ys = se_ys * scipy.stats.t._ppf((1+0.95)/2., n_ys-1)
-
-                    ax = fig.gca()
-                    ax.errorbar(x, avg_ys, yerr=confiv_ys, fmt='-o', c=next(palette), label='{}'.format(probe_class))
-                ##########################################################################
-                ax.set_ylim([40, 100])
-                handles, labels = ax.get_legend_handles_labels()
-                ax.legend(handles, labels, fontsize=14, loc='best')
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                token_ba_trajs_img = base64.b64encode(figfile.getvalue())
-            ##################################q########################################
-            elif sel_cat == DEFAULTS['sel_cat']:
-                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
-                ##########################################################################
-                # make cats to select from
-                cats += database.cat_list
-                cats2 += database.cat_list
-                ##########################################################################
-                # make ba_breakdown_scatter_img
-                print 'Making ba_breakdown_scatter_img'
-                fig = database.make_ba_breakdown_scatter_fig()
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                ba_breakdown_scatter_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make ba_breakdown_img
-                print 'Making ba_breakdown_img'
-                fig = database.make_ba_breakdown_fig()
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                ba_breakdow_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make_acts_2d_fig
-                print 'Making acts_2d_img'
-                fig = database.make_acts_2d_fig()
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                acts_2d_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make cat_sim_dh_img
-                print 'Making cat_sim_dh_img'
-                fig = database.make_cat_sim_dh_fig()
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                cat_sim_dh_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            elif sel_probe == DEFAULTS['sel_probe']:
-                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
-                ##########################################################################
-                # make cats to select from
-                cats += database.cat_list
-                cats2 += database.cat_list
-                ##########################################################################
-                # make probes to select from
-                probes += database.cat_probe_list_dict[sel_cat]
-                probes.sort()
-                sel_probes = probes[1:] # removes 'Select' #TODO do i need to remove it?
-                ##########################################################################
-                # make neighbors_table_img
-                print 'Making neighbors_table_img'
-                fig = database.make_neighbors_table_fig(sel_cat)
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                neighbors_table_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make cat_cluster_img
-                if sel_cat2 == DEFAULTS['sel_cat']:
-                    print 'Making cat_cluster_img (1 category)'
-                    fig = database.make_cat_cluster_fig(sel_cat)
-                    figfile = StringIO.StringIO()
-                    fig.savefig(figfile, format='png')
-                    figfile.seek(0)
-                    cat_cluster_img = base64.b64encode(figfile.getvalue())
-                else: # cluster two categories
-                    print 'Making cat_cluster_img (2 categories)'
-                    fig = database.make_two_cat_cluster_fig(sel_cat, sel_cat2)
-                    figfile = StringIO.StringIO()
-                    fig.savefig(figfile, format='png')
-                    figfile.seek(0)
-                    cat_cluster_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make token_ba trajectories_fig
-                print 'Making token_ba_trajs_img for probes in "{}"'.format(sel_cat)
-                fig, x, ys, palette = trajdatabase.make_token_ba_trajs_fig(sel_probes, sel_cat)
-                hover = HoverTool(
-                    tooltips=[('block', '@block'), ('probe', '@probe'), ('balAcc', '$y')])
-                p = mpl.to_bokeh(fig, tools=[hover, 'pan, wheel_zoom, crosshair, save'])
-                for n, y in enumerate(ys):
-                    source = ColumnDataSource(
-                        data=dict(block=x, balAcc=y, probe=[sel_probes[n]]*len(x)))
-                    circle = Line(x='block', y='balAcc', line_color=next(palette), line_width=2)
-                    p.add_glyph(source, circle)
-                p.y_range = Range1d(40, 100)
-                p.xgrid.grid_line_color = None
-                p.toolbar.logo = None
-                p.plot_width = 1200
-                token_ba_trajs_img['script'], token_ba_trajs_img['div'] = components(p)
-                ##########################################################################
-                # make cfreq_traj_fig
-                print 'Making cfreq_traj_img for probes in "{}"'.format(sel_cat)
-                fig = trajdatabase.make_cfreq_traj_fig(sel_probes, sel_cat)
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                cfreq_traj_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            else:
-                database, trajdatabase = load_databases(sel_model_name, sel_block_name)
-                ##########################################################################
-                # make cats to select from
-                cats += database.cat_list
-                cats2 += database.cat_list
-                ##########################################################################
-                # make probes to select from
-                probes += database.cat_probe_list_dict[sel_cat]
-                probes.sort()
-                ##########################################################################
-                # make acts_dh_fig for a single token
-                print 'Making (single probe) acts_dh_img'
-                fig = database.make_acts_dh_fig(sel_probe)
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                token_acts_dh_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make acts_dh_fig for all tokens
-                print 'Making (all probes) acts_dh_img '
-                fig = database.make_acts_dh_fig()
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                acts_dh_img = base64.b64encode(figfile.getvalue())
-                ##########################################################################
-                # make_token_corcoeff_hist_fig
-                print 'Making token_corcoeff_hist_img'
-                fig = database.make_token_corcoeff_hist_fig(sel_probe)
-                figfile = StringIO.StringIO()
-                fig.savefig(figfile, format='png')
-                figfile.seek(0)
-                token_corcoeff_hist_img = base64.b64encode(figfile.getvalue())
-            ##########################################################################
-            # close trajstore
-            trajdatabase.trajstore.close()
-    ##########################################################################
-    else:
-        print 'WARNING : No log entries found'
-        headers = 'Log does not contain data for completed RNNs'.split()
+    template_dict = {key:value for key,value in
+                     zip(['version','hostname','log_mtime'],
+                         ['dev', socket.gethostname(), get_log_mtime()])}
     ##########################################################################
     # render to html
-    return render_template('home.html',
-                           button_class=button_class,
-                           mactions=mactions,
-                           hostname=socket.gethostname(),
-                           bokeh_head=bokeh_head,
+    return render_template('log.html',
+                           template_dict=template_dict,
                            log_entries=log_entries,
-                           headers=headers,
-                           log_mtime=get_log_mtime(),
-                           block_names=block_names,
-                           probes=probes,
-                           cats=cats,
-                           cats2=cats2,
-                           sel_block_name=sel_block_name,
-                           sel_model_name=sel_model_name,
-                           sel_probe=sel_probe,
-                           sel_maction=sel_maction,
-                           sel_cat=sel_cat,
-                           sel_cat2=sel_cat2,
-                           acts_2d_img=acts_2d_img,
-                           token_acts_dh_img=token_acts_dh_img,
-                           acts_dh_img=acts_dh_img,
-                           token_corcoeff_hist_img=token_corcoeff_hist_img,
-                           ba_breakdown_scatter_img=ba_breakdown_scatter_img,
-                           ba_breakdow_img=ba_breakdow_img,
-                           cat_cluster_img=cat_cluster_img,
-                           cat_sim_dh_img=cat_sim_dh_img,
-                           neighbors_table_img=neighbors_table_img,
-                           token_ba_trajs_img=token_ba_trajs_img,
-                           test_pp_traj_img=test_pp_traj_img,
-                           avg_token_ba_traj_img=avg_token_ba_traj_img,
-                           cfreq_traj_img=cfreq_traj_img,
-                           ba_pp_mw_corr_img=ba_pp_mw_corr_img,
-                           cats_sorted_by_ba_master=cats_sorted_by_ba_master,
-                           ba_comparison_reference_img=ba_comparison_reference_img)
+                           headers=headers)
 
 
-@app.route('/template/', methods=['GET', 'POST']) # TODO template for fig
-def token_acts_dh_img():
+@app.route('/model/<string:model_name1>/', methods=['GET', 'POST'])
+def model(model_name1):
     ##########################################################################
-    # make fig
-    fig = None
-    # save fig to binary
-    img = StringIO.StringIO()
-    fig.savefig(img)
-    img.seek(0)
+    start = time.time()
     ##########################################################################
-    return send_file(img, mimetype='image/png')
+    print '-----------------------------'
+    print model_name1
+    print '-----------------------------'
+    ##########################################################################
+    template_dict = {key: value for key, value in
+                     zip(['version', 'hostname', 'log_mtime'],
+                         ['dev', socket.gethostname(), get_log_mtime()])}
+    ##########################################################################
+    # get model_names2 and block_names2_dict
+    block_names1 = get_block_names_to_display(model_name1)
+    model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)
+    #########################################################################
+    if request.args.get('delete') is not None:
+        if 'yes' == raw_input('Enter yes to delete {} :\n'.format(model_name1)):
+            delete_model(model_name1)
+        else:
+            print 'Aborted deletion'
+        return redirect(url_for('log'))
+    ##########################################################################
+    # make avgtraj imgs
+    elif request.args.get('avgtrajBtn') == 'clicked':
+        trajdatabase = load_trajdatabase(model_name1)
+        num_comparisons = 1
+        palette = cycle(Category10[max(3, num_comparisons)][:num_comparisons])
+        # fig 1
+        sel_model_names = [model_name1]
+        fig = make_avg_token_ba_trajs_fig(sel_model_names, palette)
+        fig1 = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, save')
+        fig1.y_range = Range1d(50, 80)
+        fig1.plot_width = 600
+        fig1.plot_height = 300
+        fig_tuple1 = (fig1, 'bokeh')
+        # fig 2
+        fig = make_test_pp_trajs_fig(sel_model_names, palette)
+        fig2 = mpl.to_bokeh(fig, tools='pan, wheel_zoom, crosshair, save')
+        fig2.y_range = Range1d(0, 500)
+        fig2.plot_width = 600
+        fig2.plot_height = 300
+        fig_tuple2 = (fig2, 'bokeh')
+        # fig 3
+        fig3 = trajdatabase.make_ba_pp_window_corr_fig()
+        fig_tuple3 = (fig3, 'mpl')
+        # format fig_tuples to html
+        imgs_desc = 'Average Trajectories'
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
+        # close
+        trajdatabase.trajstore.close()
+    ##########################################################################
+    # make dimred imgs
+    elif request.args.get('dimredBtn'):
+        sel_block_name = request.args.get('dimredBtn')
+        database = load_database(model_name1, sel_block_name)
+        # fig 1
+        fig1 = database.make_acts_2d_fig()
+        fig_tuple1 = (fig1, 'mpl')
+        imgs_desc = 'Dimensionality Reduction Block {}'.format(sel_block_name)
+        imgs = make_imgs(fig_tuple1)
+    ##########################################################################
+    # make catsim imgs
+    elif request.args.get('catsimBtn'):
+        sel_block_name = request.args.get('catsimBtn')
+        database = load_database(model_name1, sel_block_name)
+        # fig 1
+        fig1 = database.make_cat_sim_dh_fig()
+        fig_tuple1 = (fig1, 'mpl')
+        imgs_desc = 'Category Similarity Heatmap-Dendrogram Block {}'.format(sel_block_name)
+        imgs = make_imgs(fig_tuple1)
+    ##########################################################################
+    # make breakdown imgs
+    elif request.args.get('bdBtn'):
+        sel_block_name = request.args.get('bdBtn')
+        database = load_database(model_name1, sel_block_name)
+        # fig 1
+        fig1 = database.make_ba_breakdown_scatter_fig()
+        fig_tuple1 = (fig1, 'mpl')
+        # fig2
+        fig2 = database.make_ba_breakdown_fig()
+        fig_tuple2 = (fig2, 'mpl')
+        imgs_desc = 'Balanced Accuracy Breakdown by Probe Block {}'.format(sel_block_name)
+        imgs = make_imgs(fig_tuple1, fig_tuple2)
+    ##########################################################################
+    # make cluster imgs
+    elif request.args.get('clustBtn'):
+        sel_block_name = request.args.get('clustBtn')
+        database = load_database(model_name1, sel_block_name)
+        # fig_tuples
+        fig_tuples = []
+        for cat in database.cat_list:
+            fig_tuples.append((database.make_cat_cluster_fig(cat), 'mpl'))
+        imgs_desc = 'Activation States Clustering Block {}'.format(sel_block_name)
+        imgs = make_imgs(*fig_tuples)
+    ##########################################################################
+    # make neighbors imgs
+    elif request.args.get('neighborsBtn'):
+        sel_block_name = request.args.get('neighborsBtn')
+        database = load_database(model_name1, sel_block_name)
+        # fig_tuples
+        fig_tuples = []
+        for cat in database.cat_list:
+            fig_tuples.append(database.make_neighbors_table_fig(cat))
+        imgs_desc = 'Nearest Neighbors Block {}'.format(sel_block_name)
+        imgs = make_imgs(*fig_tuples)
+    ##########################################################################
+    # make batrajs imgs
+    elif request.args.get('batrajBtn'):
+        sel_block_name = request.args.get('batrajBtn')
+        trajdatabase = load_trajdatabase(model_name1)
+        # fig_tuples
+        fig_tuples = []
+        for cat in trajdatabase.cat_list:
+            custom_probes = trajdatabase.cat_probe_list_dict[cat]
+            fig, x, ys, palette = trajdatabase.make_token_ba_trajs_fig(custom_probes, cat)
+            hover = HoverTool(
+                tooltips=[('block', '@block'), ('probe', '@probe'), ('balAcc', '$y')])
+            fig1 = mpl.to_bokeh(fig, tools=[hover, 'pan, wheel_zoom, crosshair, save'])
+            for n, y in enumerate(ys):
+                source = ColumnDataSource(
+                    data=dict(block=x, balAcc=y, probe=[custom_probes[n]] * len(x)))
+                line = Line(x='block', y='balAcc', line_color=next(palette), line_width=2)
+                fig1.add_glyph(source, line)
+            fig1.y_range = Range1d(0, 100)
+            fig_tuples.append((fig1, 'bokeh'))
+            fig_tuples.append((trajdatabase.make_cfreq_traj_fig(custom_probes, cat), 'mpl'))
+        imgs_desc = 'Token Balanced Accuracy Trajectories Block {}'.format(sel_block_name)
+        imgs = make_imgs(*fig_tuples)
+        # close
+        trajdatabase.trajstore.close()
+    ##########################################################################
+    # make catconfusion img
+    elif request.args.get('catconfBtn'):
+        sel_block_name = request.args.get('catconfBtn')
+        database = load_database(model_name1, sel_block_name)
+        # fig1
+        fig1 = database.make_cat_confusion_mat_fig()
+        fig_tuple1 = (fig1, 'mpl')
+        imgs_desc = 'Category Confusion Matrix Block {}'.format(sel_block_name)
+        imgs = make_imgs(fig_tuple1)
+    ##########################################################################
+    # make dh imgs
+    elif request.args.get('custompdh'):
+        sel_block_name = request.args.get('custompdh')
+        database = load_database(model_name1, sel_block_name)
+        # fig_tuples
+        custom_data_tuples = load_custom_probes_tuples()
+        custom_probes = [tuple[0] for tuple in custom_data_tuples if tuple[1] == 'custompdh']
+        fig_tuples = []
+        for custom_probe in custom_probes:
+            act_function = load_configs_dict(model_name1)['act_function']
+            vmin = -1.0 if act_function == 'tanh' else 0.0
+            fig_tuples.append((database.make_acts_dh_fig(custom_probe, vmin), 'mpl'))
+            fig_tuples.append((database.make_token_corcoeff_hist_fig(custom_probe), 'mpl'))
+        imgs_desc = 'Activations Dendrogram-Heatmap Block {}'.format(sel_block_name)
+        imgs = make_imgs(*fig_tuples)
+    ##########################################################################
+    # make comp2models imgs
+    elif request.args.get('comp2models') is not None:
+        comp2models_request = request.args.get('comp2models').split('+')
+        block_name1_id = int(comp2models_request[0])
+        block_name1 = block_names1[block_name1_id]
+        model_name2, block_name2 = comp2models_request[1], comp2models_request[2]
+        sel_block_names_to_compare = [block_name1, block_name2]
+        sel_model_names_to_compare = [model_name1, model_name2]
+        # reuse same palette
+        num_comparisons = len(sel_model_names_to_compare)
+        palette = cycle(Category10[max(3,num_comparisons)][:num_comparisons])
+        # fig1
+        fig1 = make_ba_bds_fig(sel_model_names_to_compare, sel_block_names_to_compare, palette)
+        fig_tuple1 = (fig1, 'mpl')
+        # fig2
+        fig2 = make_avg_token_ba_trajs_fig(sel_model_names_to_compare, palette)
+        fig2 = mpl.to_bokeh(fig2, tools='pan, wheel_zoom, crosshair, save')
+        fig2.y_range = Range1d(50, 100)
+        fig2.plot_width = 600
+        fig2.plot_height = 300
+        fig_tuple2 = (fig2, 'bokeh')
+        # fig3
+        fig3 = make_test_pp_trajs_fig(sel_model_names_to_compare, palette)
+        fig3 = mpl.to_bokeh(fig3, tools='pan, wheel_zoom, crosshair, save')
+        fig3.y_range = Range1d(0, 500)
+        fig3.plot_width = 600
+        fig3.plot_height = 300
+        fig_tuple3 = (fig3,'bokeh')
+        # fig4
+        fig4 = make_probe_sim_comp_fig(sel_model_names_to_compare, sel_block_names_to_compare, palette)
+        fig_tuple4 = (fig4, 'mpl')
+        # fig5
+        start = time.time()
+        custom_data_tuples = load_custom_probes_tuples()
+        custom_probes = [tuple[0] for tuple in custom_data_tuples if tuple[1] == 'customn']
+        fig5 = make_neighbors_rbo_fig(sel_model_names_to_compare, sel_block_names_to_compare, custom_probes)
+        fig5.y_range = Range1d(0, 1)
+        fig_tuple5 = (fig5, 'bokeh')
+        print 'Took {} secs to make fig'.format(time.time() - start)
+        iteration = block_to_iteration(model_name1, block_name1)
+        imgs_desc = 'Model Comparison Iteration {}'.format(iteration)
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4, fig_tuple5)
+    ##########################################################################
+    # make compprobes imgs
+    elif request.args.get('compprobes'):
+        trajdatabase = load_trajdatabase(model_name1)
+        # fig1
+        custom_data_tuples = load_custom_probes_tuples()
+        sel_custom_prob_tuples = [tuple for tuple in custom_data_tuples
+                                  if not tuple[1] in ['custompdh','customn','freqhist']]
+        fig1 = trajdatabase.make_compprobes_fig(sel_custom_prob_tuples)
+        fig_tuple1 = (fig1, 'mpl')
+        imgs_desc = 'Probe Comparison'
+        imgs = make_imgs(fig_tuple1)
+        # close
+        trajdatabase.trajstore.close()
+    ##########################################################################
+    # make customn imgs
+    elif request.args.get('customn'):
+        sel_block_name = request.args.get('customn')
+        database = load_database(model_name1, sel_block_name)
+        # fig
+        custom_data_tuples = load_custom_probes_tuples()
+        custom_probes = [tuple[0] for tuple in custom_data_tuples if tuple[1] == 'customn']
+        fig1 = database.make_custom_neighbors_table_fig(custom_probes)
+        fig_tuple1 = (fig1, 'mpl')
+        imgs_desc = 'Nearest Neighbors Block {}'.format(sel_block_name)
+        imgs = make_imgs(fig_tuple1)
+    ##########################################################################
+    # make freqhist imgs
+    elif request.args.get('freqhist'):
+        # fig1
+        custom_data_tuples = load_custom_probes_tuples()
+        custom_probes = [tuple[0] for tuple in custom_data_tuples if tuple[1] == 'freqhist']
+        fig1 = make_probe_freq_hist_fig(model_name1, custom_probes)
+        fig_tuple1 = (fig1, 'mpl')
+        # fig2
+        fig2 = make_cat_count_pie_chart_fig(model_name1)
+        fig_tuple2 = (fig2, 'mpl')
+        # fig3
+        # fig3 = make_corpus_traj_fig(model_name1)
+        # fig_tuple3 = (fig3, 'bokeh')
+        imgs_desc = 'Token Data'
+        imgs = make_imgs(fig_tuple1, fig_tuple2) #, fig_tuple3)
+    ##########################################################################
+    # make customclust img
+    elif request.args.get('customclust'):
+        sel_block_name = request.args.get('customclust')
+        database = load_database(model_name1, sel_block_name)
+        # fig1
+        custom_data_tuples = load_custom_probes_tuples()
+        custom_cats = [tuple[0] for tuple in custom_data_tuples if tuple[1] == 'customclust']
+        custom_cats = map(lambda x: x.upper(), custom_cats)
+        fig1 = database.make_custom_cat_clust_fig(custom_cats)
+        fig_tuple1 = (fig1, 'mpl')
+        imgs_desc = 'Token Data'
+        imgs = make_imgs(fig_tuple1)
+    ##########################################################################
+    # in case no img requested
+    else:
+        imgs_desc = None
+        imgs = False
+    ##########################################################################
+    print 'Built page in {} secs'.format(time.time() - start)
+    ##########################################################################
+    return render_template('model.html',
+                           template_dict=template_dict,
+                           btn_names_top=btn_names_top,
+                           btn_names_bottom=btn_names_bottom,
+                           model_name1=model_name1,
+                           block_names1=block_names1,
+                           model_names2=model_names2,
+                           block_names2_dict=block_names2_dict,
+                           imgs=imgs,
+                           imgs_desc=imgs_desc)
+
 
 
 ##########################################################################

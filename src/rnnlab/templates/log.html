@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+
+{% block head %}
+  {{ super() }}
+{% endblock %}
+
+{% block main %}
+
+
+    <table border="0" cellpadding="0" cellspacing="20" >
+        <tr>
+            {% for header in headers %}<th>{{header}}</th>{% endfor %}
+        </tr>
+        {% for log_entry in log_entries %}
+            <tr class='clickable-row' data-href="{{ url_for('model', model_name1=log_entry.0) }}">
+                {% for config in log_entry %}
+                    <td>{{config}}</td>
+                {% endfor %}
+            </tr>
+
+        {% endfor %}
+    </table>
+
+
+
+{% endblock %}
+

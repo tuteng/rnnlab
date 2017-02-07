@@ -1,9 +1,10 @@
 import os
 import numpy as np
-import scipy.stats
 import sys
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+from utils import to_block_name
 
 
 class Corpus(object):
@@ -11,54 +12,56 @@ class Corpus(object):
     Creates train and test corpus to use for rnn training
     """
 
-    def __init__(self, corpus_name, vocab_file_name=None, freq_cutoff=None, probes_name=None,
-                 exclude_tokens=None): #('PERIOD', 'QUESTION', 'EXCLAIM')):
+    def __init__(self, corpus_name, block_order, num_epochs, save_ev, vocab_file_name, freq_cutoff, probes_name):
         ##########################################################################
         # define data dir
         self.data_dir = os.path.join(os.path.dirname(__file__), 'data')
         ##########################################################################
         # assign instance variables
         self.corpus_name = corpus_name
+        self.block_order = block_order
+        self.num_epochs = num_epochs
         self.vocab_file_name = vocab_file_name # if specified, this is the list of tokens to include in vocab
         self.freq_cutoff = freq_cutoff # use this if no vocab file specified, None includes all tokens
         self.probes_name = probes_name # list of tokens to use for analysis after training
-        self.exclude_tokens = exclude_tokens
-        self.corpus_content, self.num_total_docs = self.get_corpus_content()
         ##########################################################################
         # make instance variables
-        self.test_doc_ids, self.train_doc_ids = self.split_corpus()
-        self.num_train_docs, self.num_test_docs = len(self.train_doc_ids), len(self.test_doc_ids)
+        self.corpus_content, self.num_total_docs = self.get_corpus_content()
+        self.test_doc_ids, self.train_doc_ids = self.split_corpus(save_ev)
+        self.num_train_doc_ids, self.num_test_doc_ids = len(self.train_doc_ids), len(self.test_doc_ids)
+        self.num_total_train_docs = self.num_train_doc_ids * self.num_epochs
         self.token_list, self.token_id_dict, self.probe_list,\
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.make_token_data()
         self.probe_cf_traj_dict = self.make_probe_cf_traj_dict()
-
+        self.tf_idf_mat = self.make_tf_idf_mat()
+        self.lex_div_traj = self.make_lex_div_traj()
 
     def get_corpus_content(self):
         ##########################################################################
         print 'Loading corpus...'
-        if self.exclude_tokens: print 'Excluding tokens: {}'.format(', '.join(self.exclude_tokens))
         ##########################################################################
         # load corpus
         corpus_content = []
         with open(os.path.join(self.data_dir, self.corpus_name, 'corpus.txt'),'r') as f:
             for doc in f.readlines():
-                if self.exclude_tokens:
-                    doc_token_list = filter(lambda a: a not in self.exclude_tokens, doc.split())
-                else:
-                    doc_token_list = doc.split()
+                doc_token_list = doc.split()
                 doc_token_list_cleaned = [token.strip() for token in doc_token_list]
                 corpus_content.append(doc_token_list_cleaned)
         num_total_docs = len(corpus_content)
+        avg_num_tokens_per_doc = np.mean([len(doc) for doc in corpus_content])
+        ##########################################################################
+        print 'Average number of tokens in doc: {}'.format(avg_num_tokens_per_doc)
         ##########################################################################
         return corpus_content, num_total_docs
 
 
-    def split_corpus(self, min_num_test_docs=70, save_ev=10): #TODO get save_ev from config
+    def split_corpus(self, save_ev, min_num_test_docs=70):
         ##########################################################################
         # split corpus into train and test based on save_ev
         if self.num_total_docs < 2 * min_num_test_docs:
             sys.exit('rnnlab: Not enough docs in corpus: {}.'.format(self.num_total_docs))
         if save_ev > self.num_total_docs:
+            print 'TEST:', save_ev, self.num_total_docs
             sys.exit('rnnlab: save_ev is larger than number of total documents.')
         while True:
             num_train_docs = (self.num_total_docs - min_num_test_docs)
@@ -80,20 +83,34 @@ class Corpus(object):
         return test_doc_ids, train_doc_ids
 
 
-    def gen_train_block_name_and_id(self, epochs, shuffle=False): # TODO make sure shuffling works
+    def gen_train_block_name_and_id(self, num_epochs=None, block_order=None):
         ##########################################################################
-        max_num_train_blocks = self.num_train_docs * epochs
-        if shuffle: np.random.shuffle(self.train_doc_ids)
-        train_doc_ids = self.train_doc_ids * epochs
-        for n in range(max_num_train_blocks):
-            block_id = train_doc_ids[n]
-            block_name = self.to_block_name(n+1) # +1 assures names start at 1
+        # inits
+        if num_epochs is None:
+            num_epochs = self.num_epochs
+            num_generator_ids = self.num_total_train_docs
+        else:
+            num_generator_ids = self.num_train_doc_ids
+        if block_order is None: block_order = self.block_order
+        ##########################################################################
+        if block_order == 'shuffled':
+            np.random.shuffle(self.train_doc_ids)
+            print 'Shuffled training doc ids'
+        elif block_order == 'reversed':
+            self.train_doc_ids = self.train_doc_ids[::-1]
+            print 'Reversed training doc ids'
+        elif block_order == 'chronological':
+            pass
+        else:
+            sys.exit('rnnlab: block_order value not recognized.'
+                     ' Please use: "chornological", "shuffled", or "reversed"')
+        ##########################################################################
+        # generator
+        train_doc_ids_across_epochs = self.train_doc_ids * num_epochs
+        for n in range(num_generator_ids):
+            block_id = train_doc_ids_across_epochs[n]
+            block_name = to_block_name(n+1)
             yield (block_name, block_id)
-
-
-    def to_block_name(self, block):
-        ##########################################################################
-        return ('0000' + str(block))[-4:]
 
 
     def gen_batch(self, mb_size, bptt_steps, doc_id):
@@ -139,7 +156,7 @@ class Corpus(object):
         ##########################################################################
         # make vocab from freq_cutoff
         if not self.vocab_file_name:
-            cv = CountVectorizer() # TODO make sure this works
+            cv = CountVectorizer()
             vectorized_corpus = cv.fit_transform(self.corpus_content).toarray()
             types = cv.get_feature_names()
             type_freqs = np.asarray(vectorized_corpus.sum(axis=0)).ravel()
@@ -157,11 +174,6 @@ class Corpus(object):
                     token = line.strip().strip('\n')
                     vocab_list.append(token)
         ##########################################################################
-        # exclude tokens, if specified
-        if self.exclude_tokens is not None:
-            for token in self.exclude_tokens:
-                if token in vocab_list: vocab_list.remove(token)
-        ##########################################################################
         # make token list and dict from vocab
         vocab_list.append("UNKNOWN")
         for token in vocab_list:
@@ -173,7 +185,7 @@ class Corpus(object):
         probe_file_name = '{}.txt'.format(self.probes_name)
         with open(os.path.join(path, probe_file_name), 'r') as f:
             for line in f:
-                data = (line.strip().strip('\n').strip()).split() # TODO probe list is not made in alphabetical order, problem?
+                data = (line.strip().strip('\n').strip()).split()
                 cat = data[0]
                 probe = data[1]
                 if probe not in token_list:
@@ -197,63 +209,33 @@ class Corpus(object):
         return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
 
 
-    def make_tf_idf_corr_curve(self, save_ev): # TODO make this method work
+    def make_tf_idf_mat(self):
         ##########################################################################
-        # get docs
-        path = os.path.join(self.data_dir, self.corpus_name)
-        file_name = 'corpus.txt'
-        with open(os.path.join(path, file_name), 'r') as f:
-            docs = f.readlines()
+        print 'Making tf-idf mat using train docs...'
         ##########################################################################
-        # get term freq TODO make term freq for vocab words only
-        cv = CountVectorizer()
-        tf = cv.fit_transform(docs).toarray()
+        # make tf_idf_mat
+        corpus = [] # scikit requires corpus to be a list of space-separated words
+        tfidf = TfidfVectorizer(vocabulary=self.token_list)
+        for block_name, doc_id in self.gen_train_block_name_and_id():
+            doc_str = ' '.join(self.corpus_content[doc_id])
+            corpus.append(doc_str)
+        tf_idf_mat = tfidf.fit_transform(corpus).toarray()
         ##########################################################################
-        # get doc_tfidfs
-        np.set_printoptions(threshold=1)
-        tfidf = TfidfTransformer(use_idf=True, smooth_idf=False, norm=None)
-        doc_tfidfs = tfidf.fit_transform(tf).toarray()
-        ##########################################################################
-        # make average tfidf for every weights_interval docs
-        def groupedAvg(myArray, N):
-            result = np.cumsum(myArray, 0)[N - 1::N] / float(N)
-            result[1:] = result[1:] - result[:-1]
-            return result
-
-        avg_doc_tfidfs = groupedAvg(doc_tfidfs, save_ev)
-        num_avg_doc_tfidfs = len(avg_doc_tfidfs)
-        print 'Num tf-idf vectors generated: {}'.format(num_avg_doc_tfidfs)
-        ##########################################################################
-        # get curve of correlations of tfidf
-        tf_idf_corr_curve = []
-        for i in xrange(num_avg_doc_tfidfs):
-            if i == 0:
-                tf_idf_corr_curve.append(1)
-            else:
-                corr = scipy.stats.pearsonr(avg_doc_tfidfs[i - 1], doc_tfidfs[i * save_ev])[0]
-                tf_idf_corr_curve.append(corr)
-        ##########################################################################
-        # adjust length to weights_interval
-        num_data_points = len(tf_idf_corr_curve)
-        max_data_points = num_data_points - num_data_points % save_ev
-        print 'Returning first {}'.format(len(tf_idf_corr_curve[:max_data_points]))
-        # TODO make sure the data points line up exactly with the documents
-        ##########################################################################
-        return tf_idf_corr_curve[:max_data_points]
+        return tf_idf_mat #(num_total_train_docs x num_vocab)
 
 
-    def make_probe_cf_traj_dict(self): # dict key is probe and value is numpy array with cf traj
+    def make_probe_cf_traj_dict(self):
         ##########################################################################
-        print 'Making probe cumfreq trajectory dict...'
+        print 'Making probe_cf_traj using train docs...'
         ##########################################################################
         # make dict
-        probe_cf_traj_dict = {probe: np.zeros(self.num_train_docs) for probe in self.probe_list}
+        probe_cf_traj_dict = {probe: np.zeros(self.num_total_train_docs) for probe in self.probe_list}
         ##########################################################################
         # collect probe frequency
-        for block_name, doc_id in self.gen_train_block_name_and_id(epochs=1, shuffle=False):
-            doc = self.corpus_content[doc_id]
+        for block_name, doc_id in self.gen_train_block_name_and_id():
+            doc_probe_list = self.corpus_content[doc_id]
             traj_id = int(block_name) - 1
-            for probe in doc:
+            for probe in doc_probe_list:
                 if probe in self.probe_id_dict:  probe_cf_traj_dict[probe][traj_id] += 1
         ##########################################################################
         # calc cumulative sum
@@ -263,5 +245,18 @@ class Corpus(object):
         return probe_cf_traj_dict
 
 
+    def make_lex_div_traj(self):
+        ##########################################################################
+        print 'Making lex_div_traj using train docs...'
+        ##########################################################################
+        lex_div_traj =[]
+        for block_name, doc_id in self.gen_train_block_name_and_id():
+            doc_probe_list = self.corpus_content[doc_id]
+            num_unique_tokens = len(list(set(doc_probe_list)))
+            num_total_tokens = len(doc_probe_list)
+            lex_div = float(num_unique_tokens) / num_total_tokens
+            lex_div_traj.append(lex_div)
+        ##########################################################################
+        return lex_div_traj
 
 

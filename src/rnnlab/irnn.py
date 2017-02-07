@@ -1,7 +1,7 @@
 
 
 import tensorflow as tf
-from utilities import load_rc
+from dbutils import load_rnnlabrc
 import numpy as np # irnn specific
 
 class IRNN(object):
@@ -9,52 +9,43 @@ class IRNN(object):
     Identity recurrent neural network graph in tensorflow
     '''
 
-    def __init__(self, configs_dict, corpus):
+    def __init__(self, num_input_units, configs_dict):
         ##########################################################################
-        # assign instance variables from configs_dict
+        # assign instance variables that will be called outside of class definition
+        self.mb_size = int(configs_dict['mb_size'])
         self.bptt_steps = int(configs_dict['bptt_steps'])
         self.num_hidden_units = int(configs_dict['num_hidden_units'])
-        self.mb_size = int(configs_dict['mb_size'])
-        self.learning_rate = float(configs_dict['learning_rate'])
-        self.weight_init = str(configs_dict['weight_init'])
-        self.act_function = configs_dict['act_function']
-        self.bias = int(configs_dict['bias'])
-        self.optimizer = configs_dict['optimizer']
-        self.leakage = float(configs_dict['leakage']) # has to be float
-        self.num_iterations = int(configs_dict['num_iterations'])
-        self.num_epochs = int(configs_dict['num_epochs'])
-        self.randomize_blocks = int(configs_dict['randomize_blocks'])
-        self.save_ev = int(configs_dict['save_ev'])
-        self.num_input_units = len(corpus.token_list)
         ##########################################################################
-        # add dict and corpus
-        self.configs_dict = configs_dict
-        self.corpus = corpus
+        # unpack remaining configs
+        learning_rate = float(configs_dict['learning_rate'])
+        weight_init = configs_dict['weight_init']
+        act_function = configs_dict['act_function']
+        bias = int(configs_dict['bias'])
+        optimizer = configs_dict['optimizer']
         ##########################################################################
-        device = '/gpu:0' if (load_rc('gpu')) == 'True' else '/cpu:0'
+        device = '/gpu:0' if (load_rnnlabrc('gpu')) == 'True' else '/cpu:0'
         ##########################################################################
         # weights
-        def weight_initializer(self, dim1):
-            if self.weight_init == 'random_normal':
+        def weight_initializer(dim1):
+            if weight_init == 'random_normal':
                 return tf.random_normal_initializer(0.0, 1/dim1)
-            elif self.weight_init == 'truncated_normal':
+            elif weight_init == 'truncated_normal':
                 return tf.truncated_normal_initializer(0.0, 1/dim1)
-            elif self.weight_init == 'uus':
+            elif weight_init == 'uus':
                 return tf.uniform_unit_scaling_initializer(factor=1.0)
-        def bias_initializer(self):
-            if not self.bias:
-                return tf.constant_initializer(0.0)
+        def bias_initializer():
+            if not bias: return tf.constant_initializer(0.0)
             else: return tf.constant_initializer(0.0)
         with tf.device(device):
-            self.Wy = tf.get_variable('Wy', [self.num_hidden_units, self.num_input_units], initializer=weight_initializer(self, self.num_hidden_units))
-            self.by = tf.get_variable('by', [self.num_input_units], initializer=bias_initializer(self), trainable=self.bias)
+            Wy = tf.get_variable('Wy', [self.num_hidden_units, num_input_units], initializer=weight_initializer(self.num_hidden_units))
+            by = tf.get_variable('by', [num_input_units], initializer=bias_initializer(), trainable=bias)
         ##########################################################################
         # define training step
         self.sess = tf.InteractiveSession()
         with tf.device(device):
             ##########################################################################
             # placeholders
-            self.x = tf.placeholder(tf.int32, [self.mb_size, self.bptt_steps], name='input_placeholder')
+            self.x = tf.placeholder(tf.int32, [self.mb_size, self.bptt_steps], name='input_placeholder') # can set bppt to none
             self.y = tf.placeholder(tf.int32, [self.mb_size], name='labels_placeholder')
             ########################################################################
             # convert integer input to one-hot
@@ -93,33 +84,30 @@ class IRNN(object):
             ########################################################################
             # hidden state tensors
             self.last_hidden_state = last_hidden_state_tensor
-            self.all_hidden_states = tf.reshape(hidden_states_tensor, [-1, self.num_hidden_units])
+            self.all_hidden_states = tf.reshape(hidden_states_tensor, [-1, num_hidden_units])
             ########################################################################
             # output layer
-            last_logit = tf.matmul(self.last_hidden_state, self.Wy) + self.by
+            last_logit = tf.matmul(self.last_hidden_state, Wy) + by
             self.softmax_probs = tf.nn.softmax(last_logit)
             ########################################################################
             # cost
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(last_logit, self.y)
-            self.total_loss = tf.reduce_mean(losses)
+            total_loss = tf.reduce_mean(losses)
             # perplexity
-            self.pp_mat = tf.exp(losses)
-            self.mean_pp = tf.exp(self.total_loss)
+            self.pp_vec = tf.exp(losses)
+            self.mean_pp = tf.exp(total_loss) # used too calc test docs pp
             ########################################################################
             # training step definition
-            if self.optimizer == 'adagrad':
+            if optimizer == 'adagrad':
                 print 'Using Adagrad optmizer'
-                self.train_step = tf.train.AdagradOptimizer(self.learning_rate).minimize(self.total_loss)
+                self.train_step = tf.train.AdagradOptimizer(learning_rate).minimize(total_loss)
             else:
                 print 'Using SGD optmizer'
-                self.train_step = tf.train.GradientDescentOptimizer(self.learning_rate).minimize(self.total_loss)
+                self.train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(total_loss)
         ########################################################################
         # saver
         self.saver = tf.train.Saver(max_to_keep=10)
         ########################################################################
         # initialize all variables
-        if not device == '/gpu:0':
-            self.sess.run(tf.global_variables_initializer())
-        else:
-            self.sess.run(tf.initialize_all_variables()) # TODO how do i update my gpu installation of tensorflow?
+        self.sess.run(tf.global_variables_initializer())
         print 'Compiled tensorflow graph and initialized all variables'

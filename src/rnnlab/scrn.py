@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 import numpy as np # needed for identity matrix init
-from utilities import load_rc
+from dbutils import load_rnnlabrc
 
 
 class SCRN(object):
@@ -24,7 +24,7 @@ class SCRN(object):
         self.leakage = float(configs_dict['leakage']) # has to be float
         self.num_iterations = int(configs_dict['num_iterations'])
         self.num_epochs = int(configs_dict['num_epochs'])
-        self.randomize_blocks = int(configs_dict['randomize_blocks'])
+        self.block_order = str(configs_dict['block_order'])
         self.save_ev = int(configs_dict['save_ev'])
         self.num_input_units = len(corpus.token_list)
         ##########################################################################
@@ -32,7 +32,7 @@ class SCRN(object):
         self.configs_dict = configs_dict
         self.corpus = corpus
         ##########################################################################
-        device = '/gpu:0' if (load_rc('gpu')) == 'True' else '/cpu:0'
+        device = '/gpu:0' if (load_rnnlabrc('gpu')) == 'True' else '/cpu:0'
         ##########################################################################
         # weights
         def weight_initializer(self, dim1):
@@ -116,9 +116,6 @@ class SCRN(object):
         # saver
         self.saver = tf.train.Saver(max_to_keep=10)
         ########################################################################
-        # initialize all variables
-        if not device == '/gpu:0':
-            self.sess.run(tf.global_variables_initializer())
-        else:
-            self.sess.run(tf.initialize_all_variables()) # TODO how do i update my gpu installation of tensorflow?
+        ## initialize all variables
+        self.sess.run(tf.global_variables_initializer())
         print 'Compiled tensorflow graph and initialized all variables'
