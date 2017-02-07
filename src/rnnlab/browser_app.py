@@ -212,13 +212,13 @@ def model(model_name1):
         sel_block_name = request.args.get('custompdh')
         database = load_database(model_name1, sel_block_name)
         # fig_tuples
+        act_function = load_configs_dict(model_name1)['act_function']
+        vmin = -1.0 if act_function == 'tanh' else 0.0
         custom_data_tuples = load_custom_probes_tuples()
         custom_probes = [tuple[0] for tuple in custom_data_tuples if tuple[1] == 'custompdh']
         fig_tuples = []
         for custom_probe in custom_probes:
-            act_function = load_configs_dict(model_name1)['act_function']
-            vmin = -1.0 if act_function == 'tanh' else 0.0
-            fig_tuples.append((database.make_acts_dh_fig(custom_probe, vmin), 'mpl'))
+            fig_tuples.append((database.make_acts_dh_fig(custom_probe, vmin=vmin), 'mpl'))
             fig_tuples.append((database.make_token_corcoeff_hist_fig(custom_probe), 'mpl'))
         imgs_desc = 'Activations Dendrogram-Heatmap Block {}'.format(sel_block_name)
         imgs = make_imgs(*fig_tuples)

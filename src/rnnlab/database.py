@@ -235,7 +235,7 @@ class DataBase:
         ##########################################################################
         # axes
         ax.set_xlabel('Pearson Correlation Coefficient', fontsize=ax_font_size)
-        ax.set_ylabel('Number of observations', fontsize=ax_font_size)
+        ax.set_ylabel('Number of observations of "{}'.format(probe), fontsize=ax_font_size)
         ax.hist(corr_mat, bins)
         ax.set_xlim([0, 1]) # this doesn't work well for block 0001
         ##########################################################################

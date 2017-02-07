@@ -100,7 +100,7 @@ class TrajDataBase:
         return train_hca, test_hca
 
 
-    def calc_token_ba_list(self, all_acts_df, block_name, step_size=0.001, verbose=False): # TODO make this step art of user cofigs
+    def calc_token_ba_list(self, all_acts_df, block_name, thr_step=0.001, verbose=False):
         ##########################################################################
         # calc simmat
         probe_simmat = calc_probe_sim_mat(all_acts_df, self.probe_list)
@@ -108,7 +108,8 @@ class TrajDataBase:
         print 'Calculating balanced accuracy...'
         ##########################################################################
         # make thr_ranges
-        num_cpus, thr_start, thr_end, thr_step = 6, 0.7, 1.0, step_size  # TODO how flexible is this?
+        num_cpus = 6
+        thr_start, thr_end = 0.7, 1.0  # TODO how flexible is this?
         thr_num_steps = round(((thr_end - thr_start) / thr_step) / num_cpus, 2)
         thr_lists = []
         while True:
@@ -122,7 +123,7 @@ class TrajDataBase:
         if mp.cpu_count() < num_cpus:
             print 'rnnlab WARNING: CPU Count is < 6. Parallel calculation of token_ba may not work'
         elif verbose:
-            print 'Calculating token ba using {} processes with {} steps...'.format(num_cpus, step_size)
+            print 'Calculating token ba using {} processes with {} steps...'.format(num_cpus, thr_step)
             print 'Threshold Ranges:'
             for i in thr_lists: print i, '\n'
         ##########################################################################
