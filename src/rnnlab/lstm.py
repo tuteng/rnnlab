@@ -36,8 +36,9 @@ class LSTM(object):
         with tf.device(device):
             ##########################################################################
             # placeholders
-            self.x = tf.placeholder(tf.int32, [mb_size, bptt_steps], name='input_placeholder') # can set bppt to none
-            self.y = tf.placeholder(tf.int32, [mb_size], name='labels_placeholder')
+
+            self.x = tf.placeholder(tf.int32, [None, None], name='input_placeholder')  # can set bppt to none
+            self.y = tf.placeholder(tf.int32, [None], name='labels_placeholder')
             ########################################################################
             # project x to hidden layer by indexing Wx
             x_projected_to_hidden = tf.nn.embedding_lookup(Wx, self.x)

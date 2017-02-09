@@ -1,26 +1,31 @@
-import os, time, shutil, sys, csv
-import pyprind
+import csv
 import datetime
-import pandas as pd
-import numpy as np
-import tensorflow as tf
+import os
+import shutil
+import sys
+import time
 from itertools import groupby
 from operator import itemgetter
+
+import numpy as np
+import pandas as pd
+import pyprind
+import tensorflow as tf
 
 from corpus import Corpus
 from database import DataBase
 from trajdatabase import TrajDataBase
-from utils import make_rnnlab_alias
+from utils import create_rnn_graph
 from utils import check_disk_space
-from utils import remove_log_entry
-from utils import is_training_completed
-from utils import to_block_name
 from utils import get_log_entries_list
+from utils import is_training_completed
 from utils import load_rnnlabrc
 from utils import make_lex_div_traj
 from utils import make_probe_cf_traj_dict
+from utils import make_rnnlab_alias
 from utils import make_tf_idf_mat
-
+from utils import remove_log_entry
+from utils import to_block_name
 
 np.set_printoptions(suppress=True)
 
@@ -56,9 +61,9 @@ class RNN():
         corpus_kwargs['num_epochs'] = self.num_epochs
         self.corpus = Corpus(**corpus_kwargs)
         ##########################################################################
-        # create rnn
+        # create rnn_graph
         num_input_units = len(self.corpus.token_list)
-        self.rnn = self.create_rnn(num_input_units, self.configs_dict)
+        self.rnn_graph = create_rnn_graph(num_input_units, self.configs_dict)
         ##########################################################################
         # assign instance variables
         self.model_name = self.configs_dict['model_name']
@@ -94,7 +99,8 @@ class RNN():
                 for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
                     num_mbs_trained += 1
                     total_num_examples_seen += self.mb_size
-                    self.rnn.sess.run(self.rnn.train_step, feed_dict={self.rnn.x: X, self.rnn.y: Y})
+                    self.rnn_graph.sess.run(self.rnn_graph.train_step,
+                                            feed_dict={self.rnn_graph.x: X, self.rnn_graph.y: Y})
             ##########################################################################
             # save_to_database
             if int(block_name) % self.save_ev_block == 0:
@@ -145,7 +151,7 @@ class RNN():
         ##########################################################################
         ckpt_outfile = "weights_at_block_{}.ckpt".format(block_name)
         path = os.path.join(self.runs_dir, self.model_name, 'Weights')
-        self.rnn.saver.save(self.rnn.sess, os.path.join(path, ckpt_outfile))
+        self.rnn_graph.saver.save(self.rnn_graph.sess, os.path.join(path, ckpt_outfile))
 
 
     def prepare_training(self):
@@ -185,6 +191,7 @@ class RNN():
         probe_cf_traj_dict = make_probe_cf_traj_dict(self.corpus, self.save_ev_block)
         tf_idf_mat = make_tf_idf_mat(self.corpus, self.save_ev_block)
         lex_div_traj = make_lex_div_traj(self.corpus, self.save_ev_block)
+        num_input_units = len(self.corpus.token_list)
         ##########################################################################
         # save corpus data
         path = os.path.join(self.runs_dir, self.model_name, 'Corpus_Data')
@@ -193,7 +200,8 @@ class RNN():
                  probe_cf_traj_dict=probe_cf_traj_dict,
                  num_train_doc_ids=self.corpus.num_train_doc_ids,
                  tf_idf_mat=tf_idf_mat,
-                 lex_div_traj=lex_div_traj)
+                 lex_div_traj=lex_div_traj,
+                 num_input_units=num_input_units)
         ##########################################################################
         #  save configs_dict to npy
         path = os.path.join(self.runs_dir, self.model_name, 'Configs')
@@ -310,7 +318,7 @@ class RNN():
             for file_name in sorted(os.listdir(path))[:-1]:
                 os.remove(os.path.join(path, file_name))
         ##########################################################################
-        self.rnn.sess.close()
+        self.rnn_graph.sess.close()
         tf.reset_default_graph()
         print '{} Training Session Closed and Graph reset\n\n'.format(self.model_name)
 
@@ -356,9 +364,9 @@ class RNN():
                     ##########################################################################
                     # when batch ready, calculate acts_mat and pp_vec
                     if num_tokens_in_batch == mbsize:
-                        [acts_mat, pp_vec] = self.rnn.sess.run(
-                            [self.rnn.last_hidden_state, self.rnn.pp_vec],
-                            feed_dict={self.rnn.x: probe_X, self.rnn.y: probe_Y})
+                        [acts_mat, pp_vec] = self.rnn_graph.sess.run(
+                            [self.rnn_graph.last_hidden_state, self.rnn_graph.pp_vec],
+                            feed_dict={self.rnn_graph.x: probe_X, self.rnn_graph.y: probe_Y})
                         acts_mat_list.append(acts_mat)
                         mb_data_dict['token_pp'] += pp_vec.tolist()
                         ##########################################################################
@@ -390,7 +398,8 @@ class RNN():
         ##########################################################################
         test_pp_sum, num_batches, test_pp = 0, 0, 0
         for (X, Y) in self.corpus.gen_batch(mbsize, self.bptt_steps, 'test'):
-            test_pp_batch = self.rnn.sess.run(self.rnn.mean_pp, feed_dict={self.rnn.x: X, self.rnn.y: Y})
+            test_pp_batch = self.rnn_graph.sess.run(self.rnn_graph.mean_pp,
+                                                    feed_dict={self.rnn_graph.x: X, self.rnn_graph.y: Y})
             test_pp_sum += test_pp_batch
             num_batches += 1
         test_pp = int(test_pp_sum / num_batches)
@@ -409,29 +418,6 @@ class RNN():
                      'within the same minute. Please try again.')
         ##########################################################################
         return model_name
-
-    def create_rnn(self, num_input_units, configs_dict):
-        ##########################################################################
-        flavor = configs_dict['flavor']
-        ##########################################################################
-        # init model
-        if flavor == 'lstm':
-            from lstm import LSTM
-            rnn = LSTM(num_input_units, configs_dict)
-        elif flavor == 'irnn':
-            from irnn import IRNN
-            rnn = IRNN(num_input_units, configs_dict)
-        elif flavor == 'srn':
-            from srn import SRN
-            rnn = SRN(num_input_units, configs_dict)
-        elif flavor == 'scrn':
-            from scrn import SCRN
-            rnn = SCRN(num_input_units, configs_dict)
-        else:
-            sys.exit('RNN flavor not recognized.')
-        ##########################################################################
-        return rnn
-
 
     def make_configs_dict(self, user_configs, flavor):
         ##########################################################################

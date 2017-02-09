@@ -49,8 +49,9 @@ def load_corpus_data(model_name):
     num_train_doc_ids = npzfile['num_train_doc_ids']
     tf_idf_mat = npzfile['tf_idf_mat']
     lex_div_traj = npzfile['lex_div_traj']
+    num_input_units = npzfile['num_input_units']
     ##########################################################################
-    return probe_cf_traj_dict, num_train_doc_ids, tf_idf_mat, lex_div_traj
+    return probe_cf_traj_dict, num_train_doc_ids, tf_idf_mat, lex_div_traj, num_input_units
 
 
 def calc_probe_sim_mat(all_acts_df, probe_list, method='pearson'): # TODO try changing method

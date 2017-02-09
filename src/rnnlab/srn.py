@@ -21,9 +21,6 @@ class SRN(object):
         optimizer = configs_dict['optimizer']
         ##########################################################################
         device = '/gpu:0' if (load_rnnlabrc('gpu')) == 'True' else '/cpu:0'
-        if mb_size < 32:
-            device = '/cpu:0'
-            mb_size = None # so that extraction can still use large mb_size
         ##########################################################################
         # weights
         with tf.device('/cpu:0'): # always needs to be cpu
@@ -39,8 +36,8 @@ class SRN(object):
         with tf.device(device):
             ##########################################################################
             # placeholders
-            self.x = tf.placeholder(tf.int32, [mb_size, bptt_steps], name='input_placeholder') # can set bppt to none
-            self.y = tf.placeholder(tf.int32, [mb_size], name='labels_placeholder')
+            self.x = tf.placeholder(tf.int32, [None, None], name='input_placeholder')  # [mb_size, bptt_steps]
+            self.y = tf.placeholder(tf.int32, [None], name='labels_placeholder')  # [mb_size]
             ########################################################################
             # project x to hidden layer by indexing Wx
             x_projected_to_hidden = tf.nn.embedding_lookup(Wx, self.x)

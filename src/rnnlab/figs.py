@@ -1,4 +1,5 @@
 import os
+import scipy
 from operator import itemgetter
 from scipy import linalg
 from scipy.spatial.distance import pdist
@@ -17,14 +18,18 @@ from matplotlib.ticker import FuncFormatter
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 from itertools import groupby
+from pprint import pprint
 
 
 from dbutils import calc_probe_sim_mat # TODO do i need dbutils separate from utils?
 from dbutils import load_rnnlabrc
 from utils import score_2_neighbor_rankings
+from utils import make_cat_conf_mat
 
 
 runs_dir = load_rnnlabrc('runs_dir')
+
+np.set_printoptions(suppress=True, precision=2, threshold=100)
 
 
 def make_acts_2d_fig(database, sv_nums=(2, 3), perplexity=30, label_probe=False, is_subtitled=False):
@@ -94,7 +99,7 @@ def make_token_corcoeff_hist_fig(database, probe, bins=100):
     ##########################################################################
     # fig 
     figsize = (6, 4)
-    ax_font_size = 10
+    ax_font_size = 8
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
     # axes
@@ -229,7 +234,7 @@ def make_acts_dh_fig(database, probe=None, num_colors=None):
     ##########################################################################
     # fig
     figsize = (6, 5)
-    ax_font_size = 12
+    ax_font_size = 8
     fig, ax_heatmap = plt.subplots(figsize=figsize)
     ##########################################################################
     # axes
@@ -487,8 +492,8 @@ def make_ba_breakdown_fig(database, is_titled=False):
     # fig settings
     figsize = (12, 8)
     title_font_size = 16
-    ax_font_size = 12
-    leg_font_size = 10
+    ax_font_size = 8
+    leg_font_size = 8
     linewidth = 2.0
     ##########################################################################
     # fig
@@ -521,8 +526,8 @@ def make_ba_breakdown_scatter_fig(database, is_titled=False):
     # fig settings
     figsize = (12, 8)
     title_font_size = 16
-    ax_font_size = 12
-    leg_font_size = 10
+    ax_font_size = 8
+    leg_font_size = 8
     ##########################################################################
     # fig
     fig, ax = plt.subplots(figsize=figsize)
@@ -581,39 +586,16 @@ def make_cat_confusion_mat_fig(database):
     import seaborn as sns
     sns.set_style('white')
     ##########################################################################
-    # get data
-    path = os.path.join(runs_dir, database.model_name, 'Balanced_Accuracy')
-    file_name = 'cat_confusion_mat_data_block_{}.npz'.format(database.block_name)
-    npzfile = np.load(os.path.join(path, file_name))
-    hits_by_cat_dict = npzfile['hits_by_cat_dict'].item()
-    fas_by_cat_dict = npzfile['fas_by_cat_dict'].item()
-    num_cats = len(fas_by_cat_dict)
-    cats = sorted(fas_by_cat_dict.keys())
-    ##########################################################################
-    # make confusion mat ( each element normalized by tot number of combinations)
-    cat_confusion_mat = np.zeros((num_cats, num_cats), dtype=float)
-    for row_id, row_cat in enumerate(cats):
-        for col_id, col_cat in enumerate(cats):
-            num_probes_row_cat = len(database.cat_probe_list_dict[row_cat])
-            num_probes_col_cat = len(database.cat_probe_list_dict[col_cat])
-            n = num_probes_row_cat * num_probes_col_cat - num_probes_row_cat
-            if row_id == col_id:  # hits
-                hits = float(hits_by_cat_dict[row_cat][col_cat])
-                cat_confusion_mat[row_id, col_id] = hits / n * 100
-            else:  # fas
-                fas = float(fas_by_cat_dict[row_cat][col_cat])
-                cat_confusion_mat[row_id, col_id] = fas / n * 100
+    # load data
+    cat_conf_mat, mask = make_cat_conf_mat(database)
+    cat_list = database.cat_list
     ##########################################################################
     # fig
     figsize = (6, 6)
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
-    # mask
-    mask = np.zeros_like(cat_confusion_mat, dtype=np.bool)
-    mask[np.triu_indices_from(mask, 1)] = True
-    ##########################################################################
     # plot
-    sns.heatmap(cat_confusion_mat.astype(np.int), ax=ax, square=True, annot=False,
+    sns.heatmap(cat_conf_mat.astype(np.int), ax=ax, square=True, annot=False,
                 annot_kws={"size": 6}, cbar_kws={"shrink": .5},
                 vmin=0, vmax=100, cmap='jet', mask=mask, fmt='d')
     ##########################################################################
@@ -621,16 +603,58 @@ def make_cat_confusion_mat_fig(database):
     cbar = ax.collections[0].colorbar
     cbar.set_ticks([0, 50, 100])
     cbar.set_ticklabels(['0%', '50%', '100%'])
+    cbar.set_label('Hits & False Alarms')
     ##########################################################################
     # ax (needs to be below plot for axes to be labeled)
-    ax.set_yticklabels(sorted(cats, reverse=True), rotation=0)
-    ax.set_xticklabels(cats, rotation=90)
+    ax.set_yticklabels(sorted(cat_list, reverse=True), rotation=0)
+    ax.set_xticklabels(cat_list, rotation=90)
     for t in ax.texts: t.set_text(t.get_text() + "%")
     ##########################################################################
     # layout
     plt.tight_layout()
     ##########################################################################
     return fig
+
+
+def make_cat_conf_diff_fig(databases):
+    ##########################################################################
+    import seaborn as sns
+    sns.set_style('white')
+    ##########################################################################
+    # load data
+    cat_conf_mat_list = []
+    mask = None
+    for database in databases:
+        cat_conf_mat, mask = make_cat_conf_mat(database)
+        cat_conf_mat_list.append(cat_conf_mat)
+    cat_list = databases[0].cat_list
+    cat_conf_mat_diff = np.subtract(*cat_conf_mat_list)
+    ##########################################################################
+    # fig
+    figsize = (6, 6)
+    fig, ax = plt.subplots(figsize=figsize)
+    ##########################################################################
+    # plot
+    sns.heatmap(cat_conf_mat_diff.astype(np.int), ax=ax, square=True, annot=False,
+                annot_kws={"size": 6}, cbar_kws={"shrink": .5},
+                vmin=0, vmax=100, cmap='jet', mask=mask, fmt='d')
+    ##########################################################################
+    # colorbar
+    cbar = ax.collections[0].colorbar
+    cbar.set_ticks([0, 50, 100])
+    cbar.set_ticklabels(['0%', '50%', '100%'])
+    cbar.set_label('Hits & FAs Difference')
+    ##########################################################################
+    # ax (needs to be below plot for axes to be labeled)
+    ax.set_yticklabels(sorted(cat_list, reverse=True), rotation=0)
+    ax.set_xticklabels(cat_list, rotation=90)
+    for t in ax.texts: t.set_text(t.get_text() + "%")
+    ##########################################################################
+    # layout
+    plt.tight_layout()
+    ##########################################################################
+    return fig
+
 
 
 
@@ -689,7 +713,7 @@ def make_cfreq_traj_fig(trajdatabase, probes):
     ##########################################################################
     # fig settings
     figsize = (6,3)
-    ax_font_size = 12
+    ax_font_size = 8
     leg_font_size = 8
     linewidth = 1.0
     fig, ax = plt.subplots(figsize=figsize)
@@ -726,7 +750,7 @@ def make_ba_pp_window_corr_fig(trajdatabase, window=20):
     ##########################################################################
     # fig settings
     figsize = (6, 3)
-    ax_font_size = 12
+    ax_font_size = 8
     leg_font_size = 8
     linewidth = 2.0
     fig, ax = plt.subplots(figsize=figsize)
@@ -767,7 +791,6 @@ def make_compprobes_fig(trajdatabase, probe_tuples):
         df = pd.DataFrame(token_ba_traj_mat)
         y, std, n = df.mean(), df.std(), len(df)
         se = std / (n ** 0.5)
-        import scipy
         ci = se * scipy.stats.t._ppf((1 + 0.95) / 2., n - 1)
         x = trajdatabase.make_xaxis()
         xys.append((x, y, ci, probe_class, n))
@@ -780,7 +803,7 @@ def make_compprobes_fig(trajdatabase, probe_tuples):
     ##########################################################################
     # fig
     figsize = (6, 3)
-    ax_font_size = 12
+    ax_font_size = 8
     leg_font_size = 8
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
@@ -795,8 +818,9 @@ def make_compprobes_fig(trajdatabase, probe_tuples):
     ##########################################################################
     # plot
     for (x, y, ci, probe_class, n) in xys:
-        ax.plot(x, y, c=next(palette), label='{} (mean +- 95% CI) n={}'.format(probe_class.replace('_', ' '), n))
+        ax.plot(x, y, c=next(palette), label='{} (mean +/- 95% CI) n={}'.format(probe_class.replace('_', ' '), n))
         ax.fill_between(x, y + ci, y - ci, alpha=0.15)
+    ax.axhline(50, linestyle='--', color='grey')
     ##########################################################################
     # legend
     handles, labels = ax.get_legend_handles_labels()
@@ -915,7 +939,7 @@ def make_test_pp_trajs_fig(trajdatabases, palette):
     ##########################################################################
     # fig settings
     figsize = (6, 3)
-    ax_font_size = 12
+    ax_font_size = 8
     linewidth = 2.0
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
@@ -960,7 +984,7 @@ def make_probe_sim_comp_fig(databases, palette, num_bins = 1000, num_samples=100
     ##########################################################################
     # fig
     figsize = (6, 6)
-    ax_font_size = 12
+    ax_font_size = 8
     leg_fontsize = 16
     markersize = 2.0
     linewidth = 1.0
@@ -1061,8 +1085,8 @@ def make_probe_freq_hist_fig(trajdatabase, probes):
     ##########################################################################
     # fig
     figsize = (6, 4)
-    ax_font_size = 10
-    leg_font_size = 12
+    ax_font_size = 8
+    leg_font_size = 8
     linewidth = 2.0
     fig, ax = plt.subplots(1, figsize=figsize)
     ##########################################################################
@@ -1085,6 +1109,60 @@ def make_probe_freq_hist_fig(trajdatabase, probes):
     fig.tight_layout()
     ##########################################################################
     return fig
+
+
+def make_comp_binned_freqs_fig(trajdatabase, probe_tuples):
+    ##########################################################################
+    # load data
+    xys = []
+    ys_ = []
+    for probe_class, group in groupby(probe_tuples, itemgetter(1)):
+        probes = [i[0] for i in list(group)]
+        x = trajdatabase.make_xaxis()[:-1]  # cut short because of diff
+        for probe in probes:
+            y_ = np.hstack((np.zeros(1), np.diff(trajdatabase.probe_cf_traj_dict[probe], 1)[:len(x)]))
+            ys_.append(y_)
+        y, std, n = np.mean(ys_, axis=0), np.std(ys_, axis=0), len(ys_)
+        se = std / (n ** 0.5)
+        ci = se * scipy.stats.t._ppf((1 + 0.95) / 2., n - 1)
+        xys.append((x, y, ci, probe_class))
+    ##########################################################################
+    # seaborn
+    import seaborn as sns
+    sns.set_style('white')
+    num_probe_classes = sum(1 for _ in groupby(probe_tuples, itemgetter(1)))
+    palette = iter(sns.color_palette("hls", num_probe_classes))
+    ##########################################################################
+    # fig
+    figsize = (6, 4)
+    ax_font_size = 8
+    leg_font_size = 8
+    linewidth = 2.0
+    fig, ax = plt.subplots(1, figsize=figsize)
+    ##########################################################################
+    # axis
+    ax.set_xlabel('Training Block', fontsize=ax_font_size)
+    ax.set_ylabel('Frequency', fontsize=ax_font_size)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.tick_params(axis='both', which='both', top='off', right='off')
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ##########################################################################
+    # plot
+    for (x, y, ci, probe_class) in xys:
+        ax.plot(x, y, '-', linewidth=linewidth, c=next(palette),
+                label='{} avg probe freq +/- 95% CI'.format(probe_class))
+        ax.fill_between(x, y + ci, y - ci, alpha=0.15)
+    ax.axhline(0, linestyle='--', color='grey')
+    ##########################################################################
+    # legend
+    ax.legend(fontsize=leg_font_size, loc='best')
+    ##########################################################################
+    # layout
+    fig.tight_layout()
+    ##########################################################################
+    return fig
+
 
 
 def make_cat_count_pie_chart_fig(database):

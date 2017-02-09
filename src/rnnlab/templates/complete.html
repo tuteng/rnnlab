@@ -7,12 +7,22 @@
 {% block main %}
 
     <h1>{{model_name1}}</h1>
-    <h3>Type phrase to complete</h3>
+<h3>Block {{block_name1}}</h3>
 
-    <form action="{{url_for('model', model_name1=model_name1)}}">
+{% if phrase %}
+{{phrase}}
+{{predicted_token}}
+{% endif %}
 
+{% from "_formhelpers.html" import render_field %}
 
-    </form>
+<form action="{{url_for('complete', model_name1=model_name1, block_name1=block_name1)}}">
+    <dl>
+        {{ render_field(form.phrase, cols='50', rows='1') }}
+        <input type="submit" value="Complete" name="name">
+    </dl>
+
+</form>
 
 
 

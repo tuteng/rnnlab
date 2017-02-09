@@ -1,9 +1,12 @@
-import time, socket
+import time, socket, os
+from wtforms import Form, TextAreaField, validators
 from flask import Flask, redirect, url_for
 from flask import render_template
 from flask import request
 from bokeh.palettes import Category10
 from itertools import cycle
+import numpy as np
+import tensorflow as tf
 
 from utils import get_log_mtime
 from utils import get_block_names_to_display
@@ -15,6 +18,11 @@ from utils import make_block_names2_dict
 from utils import load_database
 from utils import load_trajdatabase
 from utils import block_to_iteration
+from utils import create_rnn_graph
+from utils import load_rnnlabrc
+from utils import load_configs_dict
+from dbutils import load_token_data
+from dbutils import load_corpus_data
 
 from figs import make_neighbors_rbo_fig
 from figs import make_custom_neighbors_table_fig
@@ -39,22 +47,26 @@ from figs import make_acts_dh_fig
 from figs import make_token_corcoeff_hist_fig
 from figs import make_acts_2d_fig
 from figs import make_custom_cat_clust_fig
+from figs import make_cat_conf_diff_fig
+from figs import make_comp_binned_freqs_fig
 
+runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
-
-##########################################################################
 app = Flask(__name__)
-##########################################################################
-# defaults
+
 btn_names_top = ['avgtrajBtn', 'dimredBtn', 'catsimBtn', 'bdBtn',
-             'clustBtn', 'neighborsBtn', 'batrajBtn', 'catconfBtn']
+                 'clustBtn', 'neighborsBtn', 'batrajBtn', 'catconfBtn']
 
 btn_names_bottom = ['compprobes', 'customn', 'custompdh', 'freqhist',
                     'customclust', 'delete', 'complete']
 
 headers_to_display = ['model_name', 'block_order',
-    'num_reps', 'num_iterations', 'completed', 'best_token_ba']
-##########################################################################
+                      'num_reps', 'num_iterations', 'completed', 'best_token_ba']
+
+
+class PhraseForm(Form):
+    ##########################################################################
+    phrase = TextAreaField('Type your phrase here:', [validators.DataRequired()])
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -76,23 +88,44 @@ def log():
                            headers=headers)
 
 
-@app.route('/model/<string:model_name1>/complete', methods=['GET', 'POST'])
-def complete(model_name1):
-    ##########################################################################
-    start = time.time()
-    ##########################################################################
-    print '-----------------------------'
-    print model_name1
-    print '-----------------------------'
+@app.route('/model/<string:model_name1>/<block_name1>/complete/', methods=['GET', 'POST'])
+def complete(model_name1, block_name1):
     ##########################################################################
     template_dict = {key: value for key, value in
                      zip(['version', 'hostname', 'log_mtime'],
                          ['dev', socket.gethostname(), get_log_mtime()])}
     ##########################################################################
+    # make form
+    phrase = None
+    predicted_token = None
+    form = PhraseForm(request.args)
+    if form.validate():
+        ##########################################################################
+        # calc predicted_token
+        phrase = request.args.get('phrase')
+        token_id_dict = load_token_data(model_name1)[1]
+        token_list = load_token_data(model_name1)[0]
+        X = np.asarray([[token_id_dict[probe] for probe in phrase.split()]])
+        configs_dict = load_configs_dict(model_name1)
+        num_input_units = load_corpus_data(model_name1)[4]
+        rnn_graph = create_rnn_graph(num_input_units, configs_dict)
+        rnn_graph.saver.restore(rnn_graph.sess, os.path.join(runs_dir, model_name1, 'Weights',
+                                                             'weights_at_block_{}.ckpt'.format(block_name1)))
+        softmax_probs = rnn_graph.sess.run(rnn_graph.softmax_probs,
+                                           feed_dict={rnn_graph.x: X}).tolist()
+        token_id = np.argmax(softmax_probs)
+        predicted_token = token_list[token_id]
+        rnn_graph.sess.close()
+        tf.reset_default_graph()
+    ##########################################################################
     # render to html
     return render_template('complete.html',
                            model_name1=model_name1,
-                           template_dict=template_dict)
+                           block_name1=block_name1,
+                           template_dict=template_dict,
+                           form=form,
+                           phrase=phrase,
+                           predicted_token=predicted_token)
 
 
 @app.route('/model/<string:model_name1>/', methods=['GET', 'POST'])
@@ -222,21 +255,20 @@ def model(model_name1):
         custom_probes_tuples = load_custom_probes_tuples()
         custom_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customn']
         fig_tuple5 = (make_neighbors_rbo_fig(databases, custom_probes), 'bokeh')
+        fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
         for trajdatabase in trajdatabases: trajdatabase.trajstore.close()
-        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4, fig_tuple5)
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4, fig_tuple5, fig_tuple6)
     ##########################################################################
     elif request.args.get('compprobes') == 'traj':
+        imgs_desc = 'Probe Comparison'
         trajdatabase = load_trajdatabase(model_name1)
         custom_probes_tuples = load_custom_probes_tuples()
-        comp_probes = [tuple for tuple in custom_probes_tuples
-                                  if not tuple[1] in ['custompdh','customn','freqhist','customclust']]
-        fig_tuple1 = (make_compprobes_fig(trajdatabase, comp_probes), 'mpl')
-        imgs_desc = 'Probe Comparison'
-
-
-        #TODO compare bined frequencies of words
+        comp_probe_tuples = [tuple for tuple in custom_probes_tuples
+                             if not tuple[1] in ['custompdh','customn','freqhist','customclust']]
+        fig_tuple1 = (make_compprobes_fig(trajdatabase, comp_probe_tuples), 'mpl')
+        fig_tuple2 = (make_comp_binned_freqs_fig(trajdatabase, comp_probe_tuples), 'mpl')
         trajdatabase.trajstore.close()
-        imgs = make_imgs(fig_tuple1)
+        imgs = make_imgs(fig_tuple1, fig_tuple2)
     ##########################################################################
     elif request.args.get('customn') not in ['traj', None]:
         block_name1 = request.args.get('customn')

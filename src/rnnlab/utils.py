@@ -454,3 +454,56 @@ def make_lex_div_traj(corpus, save_ev_block):
     ##########################################################################
     return lex_div_traj
 
+
+def create_rnn_graph(num_input_units, configs_dict):
+    ##########################################################################
+    flavor = configs_dict['flavor']
+    ##########################################################################
+    # init model
+    if flavor == 'lstm':
+        from lstm import LSTM
+        rnn = LSTM(num_input_units, configs_dict)
+    elif flavor == 'irnn':
+        from irnn import IRNN
+        rnn = IRNN(num_input_units, configs_dict)
+    elif flavor == 'srn':
+        from srn import SRN
+        rnn = SRN(num_input_units, configs_dict)
+    elif flavor == 'scrn':
+        from scrn import SCRN
+        rnn = SCRN(num_input_units, configs_dict)
+    else:
+        sys.exit('RNN flavor not recognized.')
+    ##########################################################################
+    return rnn
+
+
+def make_cat_conf_mat(database):
+    ##########################################################################
+    path = os.path.join(runs_dir, database.model_name, 'Balanced_Accuracy')
+    file_name = 'cat_confusion_mat_data_block_{}.npz'.format(database.block_name)
+    npzfile = np.load(os.path.join(path, file_name))
+    hits_by_cat_dict = npzfile['hits_by_cat_dict'].item()
+    fas_by_cat_dict = npzfile['fas_by_cat_dict'].item()
+    num_cats = len(fas_by_cat_dict)
+    cat_list = database.cat_list
+    ##########################################################################
+    # make confusion mat
+    cat_conf_mat = np.zeros((num_cats, num_cats), dtype=float)
+    for row_id, row_cat in enumerate(cat_list):
+        for col_id, col_cat in enumerate(cat_list):
+            num_probes_row_cat = len(database.cat_probe_list_dict[row_cat])
+            num_probes_col_cat = len(database.cat_probe_list_dict[col_cat])
+            n = num_probes_row_cat * num_probes_col_cat - num_probes_row_cat
+            if row_id == col_id:  # hits
+                hits = float(hits_by_cat_dict[row_cat][col_cat])
+                cat_conf_mat[row_id, col_id] = hits / n * 100
+            else:  # fas
+                fas = float(fas_by_cat_dict[row_cat][col_cat])
+                cat_conf_mat[row_id, col_id] = fas / n * 100
+    ##########################################################################
+    # mask
+    mask = np.zeros_like(cat_conf_mat, dtype=np.bool)
+    mask[np.triu_indices_from(mask, 1)] = True
+    ##########################################################################
+    return cat_conf_mat, mask

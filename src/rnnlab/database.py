@@ -35,7 +35,7 @@ class DataBase:
         self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
         self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict = load_token_data(self.model_name)
         self.probe_cf_traj_dict, self.num_train_doc_ids, \
-        self.tf_idf_mat, self.lex_div_traj = load_corpus_data(self.model_name)
+        self.tf_idf_mat, self.lex_div_traj, self.num_input_units = load_corpus_data(self.model_name)
 
 
     def save_df(self, complevel=9):
