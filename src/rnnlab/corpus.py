@@ -2,7 +2,7 @@ import os
 import numpy as np
 import sys
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfVectorizer
+
 
 from utils import to_block_name
 
@@ -32,9 +32,7 @@ class Corpus(object):
         self.num_total_train_docs = self.num_train_doc_ids * self.num_epochs
         self.token_list, self.token_id_dict, self.probe_list,\
         self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.make_token_data()
-        self.probe_cf_traj_dict = self.make_probe_cf_traj_dict()
-        self.tf_idf_mat = self.make_tf_idf_mat()
-        self.lex_div_traj = self.make_lex_div_traj()
+
 
     def get_corpus_content(self):
         ##########################################################################
@@ -208,55 +206,5 @@ class Corpus(object):
         ##########################################################################
         return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
 
-
-    def make_tf_idf_mat(self):
-        ##########################################################################
-        print 'Making tf-idf mat using train docs...'
-        ##########################################################################
-        # make tf_idf_mat
-        corpus = [] # scikit requires corpus to be a list of space-separated words
-        tfidf = TfidfVectorizer(vocabulary=self.token_list)
-        for block_name, doc_id in self.gen_train_block_name_and_id():
-            doc_str = ' '.join(self.corpus_content[doc_id])
-            corpus.append(doc_str)
-        tf_idf_mat = tfidf.fit_transform(corpus).toarray()
-        ##########################################################################
-        return tf_idf_mat #(num_total_train_docs x num_vocab)
-
-
-    def make_probe_cf_traj_dict(self):
-        ##########################################################################
-        print 'Making probe_cf_traj using train docs...'
-        ##########################################################################
-        # make dict
-        probe_cf_traj_dict = {probe: np.zeros(self.num_total_train_docs) for probe in self.probe_list}
-        ##########################################################################
-        # collect probe frequency
-        for block_name, doc_id in self.gen_train_block_name_and_id():
-            doc_probe_list = self.corpus_content[doc_id]
-            traj_id = int(block_name) - 1
-            for probe in doc_probe_list:
-                if probe in self.probe_id_dict:  probe_cf_traj_dict[probe][traj_id] += 1
-        ##########################################################################
-        # calc cumulative sum
-        for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
-            probe_cf_traj_dict[probe] = np.cumsum(probe_freq_traj)
-        ##########################################################################
-        return probe_cf_traj_dict
-
-
-    def make_lex_div_traj(self):
-        ##########################################################################
-        print 'Making lex_div_traj using train docs...'
-        ##########################################################################
-        lex_div_traj =[]
-        for block_name, doc_id in self.gen_train_block_name_and_id():
-            doc_probe_list = self.corpus_content[doc_id]
-            num_unique_tokens = len(list(set(doc_probe_list)))
-            num_total_tokens = len(doc_probe_list)
-            lex_div = float(num_unique_tokens) / num_total_tokens
-            lex_div_traj.append(lex_div)
-        ##########################################################################
-        return lex_div_traj
 
 

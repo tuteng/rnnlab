@@ -13,8 +13,8 @@
         <div id="btns-top">
             {% for btn_name in btn_names_top %}
                 <div class="dropdown">
-                    <button name="{{btn_name}}" value="clicked" class="dropbtn">{{btn_name}}</button>
-                    {% if btn_name != 'avgtrajBtn' %}
+                    <button name="{{btn_name}}" value="traj" class="dropbtn">{{btn_name}}</button>
+                    {% if btn_name not in  ['avgtrajBtn', 'batrajBtn'] %}
                         <div class="dropdown-content">
                             {% for block_name in block_names1 %}
                             <button name="{{btn_name}}" value="{{block_name}}"><b>{{loop.index0+1}}.</b> {{block_name}}</button>
@@ -29,7 +29,7 @@
         <div id="btns-bottom">
             {% for btn_name in btn_names_bottom %}
                 <div class="dropdown">
-                    <button name="{{btn_name}}" value="clicked" class="dropbtn">{{btn_name}}</button>
+                    <button name="{{btn_name}}" value="traj" class="dropbtn">{{btn_name}}</button>
                     {% if not btn_name in ['delete', 'compprobes', 'freqhist'] %}
                         <div class="dropdown-content">
                             {% for block_name in block_names1 %}

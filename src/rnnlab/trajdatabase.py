@@ -1,16 +1,17 @@
 import os, time
 import numpy as np
 import multiprocessing as mp
-import matplotlib.pyplot as plt
-from itertools import groupby
 import pandas as pd
-from operator import itemgetter
 
 
-from dbutils import calc_ba_mats, calc_probe_sim_mat, load_token_data, load_rnnlabrc
+
+from dbutils import calc_ba_mats
+from dbutils import load_corpus_data
+from dbutils import load_token_data
+from dbutils import load_rnnlabrc
+from dbutils import calc_probe_sim_mat
 
 
-np.set_printoptions(suppress=True)
 
 class TrajDataBase:
     """
@@ -29,20 +30,29 @@ class TrajDataBase:
         ##########################################################################
         # assign instance variables
         self.model_name = configs_dict['model_name']
-        self.save_ev = int(configs_dict['save_ev'])
+        self.num_iterations = int(configs_dict['num_iterations'])
         ##########################################################################
-        # load token data
+        # load token & corpus data
         self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
-        self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict, \
-        self.probe_cf_traj_dict, self.num_train_doc_ids = load_token_data(self.model_name)
+        self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict = load_token_data(self.model_name)
+        self.probe_cf_traj_dict, self.num_train_doc_ids, \
+        self.tf_idf_mat, self.lex_div_traj = load_corpus_data(self.model_name)
         ##########################################################################
         # open trajstore
         self.trajstore = pd.HDFStore(self.trajdfpath, complevel=complevel, complib='blosc', mode=mode)
 
 
-    def calc_new_entry(self, df, all_acts_df, test_pp, block_name, use_classifier=False):
+
+    def make_xaxis(self, omit_first=False):
         ##########################################################################
-        print 'Making new entry to trajstore...'
+        saved_block_names = self.trajstore.select_column('trajdf', 'index').values
+        xaxis = map(lambda x: int(x) * self.num_iterations, [i for i in saved_block_names])
+        if omit_first: xaxis = xaxis[1:]
+        ##########################################################################
+        return xaxis
+
+
+    def calc_new_entry(self, df, all_acts_df, test_pp, block_name, use_classifier=False):
         ##########################################################################
         # init df with index
         new_entry = pd.DataFrame(index=[block_name]) # table is empty without index
@@ -65,7 +75,7 @@ class TrajDataBase:
         else: train_hca, test_hca = np.nan, np.nan
         new_entry['train_hca'], new_entry['test_hca'] = train_hca, test_hca
         ##########################################################################
-        # add block_name as to index
+        # add block_name
         new_entry['block_name'] = block_name
         ##########################################################################
         return new_entry, test_pp, avg_token_ba, token_ba_list
@@ -77,8 +87,6 @@ class TrajDataBase:
         self.trajstore.append('trajdf', new_entry,
                               data_columns=['test_pp', 'train_hca', 'test_hca', 'avg_token_ba'],
                               min_itemsize={'block_name': 10, 'index' : 10})
-        ##########################################################################
-        print 'Saved new entry to trajstore'
         ##########################################################################
         self.trajstore.close()
 
@@ -117,7 +125,7 @@ class TrajDataBase:
             thr_lists.append(thr_list)
             thr_start = float(thr_list[-1])
             time.sleep(0.5)
-            if round(thr_end, 2) == round(thr_start, 2):  # TODO why do i have to round here?
+            if round(thr_end, 2) == round(thr_start, 2):  # TODO can i use numpy equal approximation?
                 break
         ##########################################################################
         if mp.cpu_count() < num_cpus:
@@ -182,111 +190,11 @@ class TrajDataBase:
         return query_value
 
 
-    def make_token_ba_trajs_fig(self, sel_probes, is_titled=False):
-        ##########################################################################
-        # make token_ba_traj_mat
-        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes)
-        ##########################################################################
-        # choose seaborn style and palette
-        import seaborn as sns  # if globally imported, will change all other figs unpredictably
-        sns.set_style('white')
-        palette = iter(sns.color_palette("hls", len(sel_probes)).as_hex()) # as hex may not work for matplotlib
-        ##########################################################################
-        # fig settings
-        ymax, max_num_probes = 14, 75  # 75 is largest number of probes (mammals cat)
-        ysize = max(6, ymax * len(sel_probes) / max_num_probes)  # prevents fig to be too small
-        figsize = (12, ysize)
-        title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 8
-        linewidth = 2.0
-        ##########################################################################
-        # fig
-        fig, ax = plt.subplots(figsize=figsize)
-        cat = self.probe_cat_dict[sel_probes[0]]
-        fig_name = '{} Token Balanced Accuracies for probes in {}'.format(self.model_name, cat)
-        if is_titled: plt.title(fig_name, fontsize=title_font_size)
-        ##########################################################################
-        # axes
-        ax.set_xlabel('Training Block', fontsize=ax_font_size)
-        ax.set_ylabel('Balanced Accuracy (%)', fontsize=ax_font_size)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.tick_params(axis='both', which='both', top='off', right='off')
-        ax.set_ylim([0, 100])
-        ##########################################################################
-        # plot
-        for token_ba_traj, probe in zip(token_ba_traj_mat, sel_probes):
-            x = range(0, len(token_ba_traj) *self.save_ev, self.save_ev)
-        #     ax.plot(x, token_ba_traj, '-', linewidth=linewidth, label=probe, c=next(palette))
-        ##########################################################################
-        # legend
-        ax.set_position([0.1, 0.1, 0.8, 0.85]) # 0.8  shrinks width to make room for legend
-        ax.legend(fontsize=leg_font_size, loc='best', bbox_to_anchor=(1.11, 1.05))
-        ##########################################################################
-        return fig, x, token_ba_traj_mat, palette
 
 
-    def make_cfreq_traj_fig(self, sel_probes, sel_cat, is_titled=False):
+    def make_ba_pp_window_corr_data(self, window):
         ##########################################################################
-        # make cat_ba_traj
-        token_ba_traj_mat = self.make_token_ba_traj_mat(sel_probes) # dims: (probes, blocks)
-        cat_ba_traj = np.mean(token_ba_traj_mat,  axis=0)
-        ##########################################################################
-        # choose seaborn style and palette
-        import seaborn as sns 
-        sns.set_style('white')
-        palette = iter(sns.color_palette("hls", len(sel_probes)))
-        ##########################################################################
-        # fig settings
-        ymax, max_num_probes = 10, 75  # 75 is largest number of probes (mammals cat)
-        ysize = max(6, ymax * len(sel_probes) / max_num_probes)  # prevents fig to be too small
-        figsize = (12, ysize)
-        title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 12
-        linewidth = 2.0
-        ##########################################################################
-        # fig
-        fig, ax = plt.subplots(figsize=figsize)
-        fig_name = '{} Cumulative Frequency of probes in {}'.format(self.model_name, sel_cat)
-        if is_titled: plt.title(fig_name, fontsize=title_font_size)
-        ##########################################################################
-        # axes
-        ax.set_xlabel('Training Block', fontsize=ax_font_size)
-        ax.set_ylabel('Cumulative Frequency', fontsize=ax_font_size)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.tick_params(axis='both', which='both', top='off', right='off')
-        ##########################################################################
-        # calc Y_thr (so that annotations are made only for probes with y hgiher than y_thr)
-        maxperc, max_num_probes = 95, 75
-        percentile = max(85, maxperc * len(sel_probes) /max_num_probes)
-        num_trained_blocks = len(cat_ba_traj) * self.save_ev  # in case model has not competed training
-        y_thr = np.percentile([self.probe_cf_traj_dict[probe][:num_trained_blocks][-1]
-                               for probe in sel_probes], percentile)
-        ##########################################################################
-        # plot cf
-        for probe in sel_probes:
-            probe_cf_traj_all_blocks = self.probe_cf_traj_dict[probe]
-            probe_cf_traj = probe_cf_traj_all_blocks[:num_trained_blocks]
-            x = range(len(probe_cf_traj))
-            ax.plot(x, probe_cf_traj, '--', linewidth=linewidth, c=next(palette))
-            ##########################################################################
-            # annotate
-            y = probe_cf_traj[-1]
-            if y > y_thr:  # annotate only those targets with y higher than y_thr to reduce clutter
-                plt.annotate(probe, xy=(x[-1], y), xytext=(-30, -10), textcoords='offset points',
-                             va='center', fontsize=leg_font_size, bbox=dict(boxstyle='round', fc='w'))
-        ##########################################################################
-        ax.legend(fontsize=leg_font_size, loc='upper left')
-        ##########################################################################
-        return fig
-
-
-    def make_ba_pp_window_corr_fig(self, window=20, is_title=False):
-        ##########################################################################
-        # load data
+        # load columns into series
         avg_token_ba_traj = self.trajstore.select_column('trajdf', 'avg_token_ba').values
         s1 = pd.Series(avg_token_ba_traj)
         test_pp_traj = self.trajstore.select_column('trajdf', 'test_pp').values
@@ -296,91 +204,4 @@ class TrajDataBase:
         ba_pp_mw_corr = s1.rolling(window=window).corr(s2)
         ba_pp_ew_corr = s1.expanding().corr(s2)
         ##########################################################################
-        # choose seaborn style and palette
-        import seaborn as sns  # if globally imported, will change all other figs unpredictably
-        sns.set_style('white')
-        ##########################################################################
-        # fig settings
-        figsize = (6, 4)
-        title_font_size = 16
-        ax_font_size = 16
-        leg_font_size = 8
-        linewidth = 2.0
-        ##########################################################################
-        # fig
-        fig, ax = plt.subplots(figsize=figsize)
-        fig_name = '{} Test Perplexity Trajectory'.format(self.model_name)
-        if is_title: plt.title(fig_name, fontsize=title_font_size)
-        ##########################################################################
-        # axis
-        ax.set_ylim([-1, 1])
-        ax.set_xlabel('Training Block'.format(window), fontsize=ax_font_size)
-        ax.set_ylabel('Correlation Coefficient', fontsize=ax_font_size)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.tick_params(axis='both', which='both', top='off', right='off')
-        ##########################################################################
-        # plot line through y=0
-        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
-        ax.plot(x, [0]*len(x), '--', c='gray', linewidth=linewidth)
-        ##########################################################################
-        # plot
-        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
-        ax.plot(x, ba_pp_mw_corr, '-', linewidth=linewidth,
-                label='mw-corr ({} blocks) between balAcc and test-pp'.format(window))
-        x = range(0, len(ba_pp_mw_corr) * self.save_ev, self.save_ev)
-        ax.plot(x, ba_pp_ew_corr, '-', linewidth=linewidth,
-                label='ew-corr between balAcc and test-pp')
-        ##########################################################################
-        ax.legend(fontsize=leg_font_size, loc='best')
-        ##########################################################################
-        # layout
-        plt.tight_layout()
-        ##########################################################################
-        return fig
-
-
-    def make_compprobes_fig(self, sel_custom_prob_tuples, is_titled=False):
-        ##########################################################################
-        # seaborn
-        import seaborn as sns
-        sns.set_style('white')
-        num_probe_classes = sum(1 for g in groupby(sel_custom_prob_tuples, itemgetter(1)))
-        palette = iter(sns.color_palette("hls", num_probe_classes))
-        ##########################################################################
-        # fig settings
-        figsize = (12, 8)
-        title_font_size = 16
-        ##########################################################################
-        # fig
-        fig, ax = plt.subplots(figsize=figsize)
-        fig_name = '{} Probe balanced Accuracy Trajectory Comparison'.format(self.model_name)
-        if is_titled: plt.title(fig_name, fontsize=title_font_size)
-        ##########################################################################
-        # plot
-        n = 0
-        for probe_class, group in groupby(sel_custom_prob_tuples, itemgetter(1)):
-            sel_probes = [i[0] for i in list(group)]
-            fig_, x, ys, _ = self.make_token_ba_trajs_fig(sel_probes)
-            if n == 0: fig = fig_
-            n += 1
-            df = pd.DataFrame(ys)
-            avg_ys = df.mean()
-            std_ys = df.std()
-            n_ys = len(df)
-            se_ys = std_ys / (n_ys ** 0.5)
-            import scipy
-            ci_ys = se_ys * scipy.stats.t._ppf((1 + 0.95) / 2., n_ys - 1) # confiden ce interval
-
-            ax = fig.gca()
-            ax.errorbar(x, avg_ys, yerr=ci_ys, fmt='-o', c=next(palette),
-                        label='{} (mean +- 95% CI) n={}'.format(probe_class.replace('_', ' '), len(sel_probes)))
-        ##########################################################################
-        ax.set_ylim([40, 100])
-        handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles, labels, fontsize=14, loc='best')
-        ##########################################################################
-        return fig
-
-
-
+        return ba_pp_mw_corr, ba_pp_ew_corr

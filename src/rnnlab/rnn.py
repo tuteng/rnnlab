@@ -1,4 +1,5 @@
 import os, time, shutil, sys, csv
+import pyprind
 import datetime
 import pandas as pd
 import numpy as np
@@ -16,6 +17,9 @@ from utils import is_training_completed
 from utils import to_block_name
 from utils import get_log_entries_list
 from utils import load_rnnlabrc
+from utils import make_lex_div_traj
+from utils import make_probe_cf_traj_dict
+from utils import make_tf_idf_mat
 
 
 np.set_printoptions(suppress=True)
@@ -42,7 +46,7 @@ class RNN():
             sys.exit('rnnlab: "num_reps" must be divisible by "num_iterations"')
         print 'Num reps: {} / Num iterations: {} --> Num epochs : {}'.format(
             self.num_reps, self.num_iterations, self.num_epochs)
-        print 'Num epochs: {} x save_ev --> Saving ev {}nth block'.format(
+        print 'Num epochs: {} x save_ev: {} --> Saving every {}th block'.format(
             self.num_epochs,int(self.configs_dict['save_ev']), self.save_ev_block)
         ##########################################################################
         # make corpus
@@ -77,7 +81,7 @@ class RNN():
         ##########################################################################
         # save to data base before training
         print 'Saving data from untrained model...'
-        self.save_to_database(to_block_name(0))
+        self.save_data_to_databases(to_block_name(0))
         ##########################################################################
         # training blocks
         for block_name, block_id in self.corpus.gen_train_block_name_and_id():
@@ -95,7 +99,7 @@ class RNN():
             # save_to_database
             if int(block_name) % self.save_ev_block == 0:
                 start = time.time()
-                test_pp, avg_token_ba = self.save_to_database(block_name)
+                test_pp, avg_token_ba = self.save_data_to_databases(block_name)
                 #########################################################################
                 # print to console
                 print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(
@@ -112,7 +116,7 @@ class RNN():
 
 
 
-    def save_to_database(self, block_name):
+    def save_data_to_databases(self, block_name):
         ##########################################################################
         # save checkpoint
         self.save_ckpt(block_name)
@@ -124,13 +128,13 @@ class RNN():
         # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
         trajdatabase = TrajDataBase(self.configs_dict, mode='a')
         test_pp = self.calc_test_pp()
-        new_entry, test_pp, avg_token_ba, \
-        token_ba_list = trajdatabase.calc_new_entry(df, database.make_all_acts_df(), test_pp, block_name)
+        new_entry, test_pp, avg_token_ba, token_ba_list = trajdatabase.calc_new_entry(
+            df, database.make_all_acts_df(), test_pp, block_name)
         trajdatabase.append_entry(new_entry)
         ##########################################################################
         # add token_ba_col to main database and save
         token_ba_col = [token_ba_list[database.probe_list.index(probe)] for probe in database.df['probe']]
-        database.add_col('token_ba', token_ba_col)
+        database.df['token_ba'] = token_ba_col
         database.save_df()
         ##########################################################################
         return test_pp, avg_token_ba
@@ -175,24 +179,28 @@ class RNN():
                  probe_id_dict=self.corpus.probe_id_dict,
                  probe_list=self.corpus.probe_list,
                  probe_cat_dict=self.corpus.probe_cat_dict,
-                 cat_list=self.corpus.cat_list,
-                 probe_cf_traj_dict=self.corpus.probe_cf_traj_dict,
-                 num_train_doc_ids=self.corpus.num_train_doc_ids) # TODO get rid of this and load form corpus data instead
+                 cat_list=self.corpus.cat_list)
+        ##########################################################################
+        # make corpus data
+        probe_cf_traj_dict = make_probe_cf_traj_dict(self.corpus, self.save_ev_block)
+        tf_idf_mat = make_tf_idf_mat(self.corpus, self.save_ev_block)
+        lex_div_traj = make_lex_div_traj(self.corpus, self.save_ev_block)
         ##########################################################################
         # save corpus data
-        path = os.path.join(self.runs_dir, self.model_name, 'Token_Data')
+        path = os.path.join(self.runs_dir, self.model_name, 'Corpus_Data')
         file_name = 'corpus_data.npz'.format(self.model_name)
         np.savez(os.path.join(path, file_name),
+                 probe_cf_traj_dict=probe_cf_traj_dict,
                  num_train_doc_ids=self.corpus.num_train_doc_ids,
-                 tf_idf_mat=self.corpus.tf_idf_mat,
-                 lex_div_traj=self.corpus.lex_div_traj)
+                 tf_idf_mat=tf_idf_mat,
+                 lex_div_traj=lex_div_traj)
         ##########################################################################
         #  save configs_dict to npy
         path = os.path.join(self.runs_dir, self.model_name, 'Configs')
         file_name = 'configs_dict.npy'
         np.save(os.path.join(path, file_name), self.configs_dict)
         ##########################################################################
-        print 'Saved token data and configs_dict'
+        print 'Saved token_data, corpus_data, and configs_dict'
 
 
     def remove_old_data(self, num_more_recent=5):
@@ -307,25 +315,25 @@ class RNN():
         print '{} Training Session Closed and Graph reset\n\n'.format(self.model_name)
 
 
-    def make_df(self, fast=True):
+    def make_df(self, fast=True, mbsize=128):
         ##########################################################################
-        print 'Making df...'
+        print 'Extracting activations for probes...'
         ##########################################################################
         # inits
+        pbar = pyprind.ProgBar(self.corpus.num_train_doc_ids)
+        acts_mat_list = []
         tokens_in_mb = []
-        hidden_unit_labels = ['H{}'.format(i) for i in range(self.num_hidden_units)]
-        df_column_labels = ['doc_name', 'probe', 'probe_id', 'Y', 'cat', 'token_pp'] + hidden_unit_labels
-        mb_data_dict_keys = ['X'] + df_column_labels
+        mb_data_dict_keys = ['X', 'doc_name', 'probe', 'probe_id', 'Y', 'cat', 'token_pp']
         mb_data_dict = {key: [] for key in mb_data_dict_keys}
-        df = pd.DataFrame(columns=df_column_labels)
-        probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
-        probe_Y = np.zeros(self.mb_size, dtype=int)
+        probe_X = np.zeros((mbsize, self.bptt_steps), dtype=int)
+        probe_Y = np.zeros(mbsize, dtype=int)
         num_tokens_in_batch = 0
         probe_freq_dict = {probe: 0 for probe in self.corpus.probe_list}
         ##########################################################################
         # get mb_data_dict from each block_name and add to df
         for block_name, block_id in self.corpus.gen_train_block_name_and_id(1, 'chronological'):
-            for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
+            pbar.update()
+            for (X, Y) in self.corpus.gen_batch(mbsize, self.bptt_steps, block_id):
                 tokens = [self.corpus.token_list[token_id] for token_id in X[:, -1]]
                 for n, token in enumerate(tokens):
                     ##########################################################################
@@ -333,7 +341,7 @@ class RNN():
                     if token in self.corpus.probe_id_dict and token not in tokens_in_mb:
                         if fast:
                             tokens_in_mb.append(token)
-                        mb_data_dict['X'].append(X[n])
+                        mb_data_dict['X'].append(X[n]) # this is a list of token_ids in bptt window
                         mb_data_dict['doc_name'].append(int(block_name))
                         mb_data_dict['probe'].append(token)
                         mb_data_dict['probe_id'].append(self.corpus.probe_id_dict[token])
@@ -347,37 +355,41 @@ class RNN():
                         probe_freq_dict[token] += 1.0
                     ##########################################################################
                     # when batch ready, calculate acts_mat and pp_vec
-                    if num_tokens_in_batch == self.mb_size:
+                    if num_tokens_in_batch == mbsize:
                         [acts_mat, pp_vec] = self.rnn.sess.run(
                             [self.rnn.last_hidden_state, self.rnn.pp_vec],
                             feed_dict={self.rnn.x: probe_X, self.rnn.y: probe_Y})
-                        ##########################################################################
-                        # add acts_mat and pp_vec to mb_data_dict
-                        for n, hidden_unit_label in enumerate(hidden_unit_labels):
-                            mb_data_dict[hidden_unit_label] += acts_mat.T[n].tolist()
+                        acts_mat_list.append(acts_mat)
                         mb_data_dict['token_pp'] += pp_vec.tolist()
                         ##########################################################################
                         # reset batch
                         tokens_in_mb = []
                         num_tokens_in_batch = 0
-                        probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
-                        probe_Y = np.zeros(self.mb_size, dtype=int)
+                        probe_X = np.zeros((mbsize, self.bptt_steps), dtype=int)
+                        probe_Y = np.zeros(mbsize, dtype=int)
         ##########################################################################
-        # convert mb_data_dict to df
-        num_data = len(mb_data_dict['token_pp'])  # discard leftover tokens for which no acts were calculated
-        for df_column_label in df_column_labels:
-            df[df_column_label] = mb_data_dict[df_column_label][:num_data]
+        # make df
+        acts_for_df = np.vstack((mat for mat in acts_mat_list))
+        acts_for_df_labels = ['H{}'.format(i) for i in range(self.num_hidden_units)]
+        df = pd.DataFrame(acts_for_df, columns=acts_for_df_labels)
+        num_data = len(mb_data_dict['token_pp'])
+        for df_column_label in mb_data_dict_keys:
+            if 'X' == df_column_label:
+               for n, row in enumerate(np.asarray(mb_data_dict['X'][:num_data]).T):
+                   df['X{}'.format(n)] = row
+            else:
+                df[df_column_label] = mb_data_dict[df_column_label][:num_data]
         ##########################################################################
         return df
 
 
 
-    def calc_test_pp(self):
+    def calc_test_pp(self, mbsize=128):
         ##########################################################################
         print 'Calculating test perplexity...'
         ##########################################################################
         test_pp_sum, num_batches, test_pp = 0, 0, 0
-        for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, 'test'):
+        for (X, Y) in self.corpus.gen_batch(mbsize, self.bptt_steps, 'test'):
             test_pp_batch = self.rnn.sess.run(self.rnn.mean_pp, feed_dict={self.rnn.x: X, self.rnn.y: Y})
             test_pp_sum += test_pp_batch
             num_batches += 1

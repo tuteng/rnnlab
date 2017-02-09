@@ -2,9 +2,7 @@
 BODY customclust
 FAMILY customclust
 #
-jupiter freqhist
-mars freqhist
-moon freqhist
+dog freqhist
 #
 dog custompdh
 mom custompdh

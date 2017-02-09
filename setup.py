@@ -23,7 +23,8 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 2.7",
 ]
 INSTALL_REQUIRES = ['numpy','matplotlib>=1.5','pandas>=0.19','scipy>=0.18',
-                    'scikit-learn>=0.18','tensorflow>=0.12', 'bokeh>=0.12','flask', 'seaborn']
+                    'scikit-learn>=0.18','tensorflow>=0.12', 'bokeh>=0.12',
+                    'flask', 'seaborn','pyprind']
 
 ###################################################################
 

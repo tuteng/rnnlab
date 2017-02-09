@@ -33,11 +33,24 @@ def load_token_data(model_name):
     cat_list = npzfile['cat_list'].tolist()
     cat_probe_list_dict = {cat: [probe for probe in probe_list if probe_cat_dict[probe] == cat]
                            for cat in cat_list}
-    probe_cf_traj_dict = npzfile['probe_cf_traj_dict'].item()
-    num_train_doc_ids = npzfile['num_train_doc_ids']
     ##########################################################################
     return token_list, token_id_dict, probe_list, probe_id_dict,\
-           probe_cat_dict, cat_list, cat_probe_list_dict, probe_cf_traj_dict, num_train_doc_ids
+           probe_cat_dict, cat_list, cat_probe_list_dict
+
+
+def load_corpus_data(model_name):
+    ##########################################################################
+    path = os.path.join(runs_dir, model_name, 'Corpus_Data')
+    file_name = 'corpus_data.npz'.format(model_name)
+    npzfile = np.load(os.path.join(path, file_name))
+    ##########################################################################
+    # load
+    probe_cf_traj_dict = npzfile['probe_cf_traj_dict'].item()
+    num_train_doc_ids = npzfile['num_train_doc_ids']
+    tf_idf_mat = npzfile['tf_idf_mat']
+    lex_div_traj = npzfile['lex_div_traj']
+    ##########################################################################
+    return probe_cf_traj_dict, num_train_doc_ids, tf_idf_mat, lex_div_traj
 
 
 def calc_probe_sim_mat(all_acts_df, probe_list, method='pearson'): # TODO try changing method
@@ -55,6 +68,9 @@ def calc_probe_sim_mat(all_acts_df, probe_list, method='pearson'): # TODO try ch
 
 def calc_ba_mats(probe_list, cat_list, probe_cat_dict, probe_simmat, thr_list, output, verbose=False):
     ##########################################################################
+    # inits
+    import pyprind
+    pbar = pyprind.ProgBar(len(thr_list))
     ba_mat = None
     cat_confusion_mat_data_list = []
     num_probes = len(probe_list)
@@ -80,6 +96,7 @@ def calc_ba_mats(probe_list, cat_list, probe_cat_dict, probe_simmat, thr_list, o
     token_ba_mat = np.zeros([num_probes, num_thrs], float)
     ##########################################################################
     for n, thr in enumerate(thr_list):
+        pbar.update()
         ##########################################################################
         hits_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in cat_list} for cat_1 in cat_list}
         fas_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in cat_list} for cat_1 in cat_list}

@@ -21,6 +21,9 @@ class SRN(object):
         optimizer = configs_dict['optimizer']
         ##########################################################################
         device = '/gpu:0' if (load_rnnlabrc('gpu')) == 'True' else '/cpu:0'
+        if mb_size < 32:
+            device = '/cpu:0'
+            mb_size = None # so that extraction can still use large mb_size
         ##########################################################################
         # weights
         with tf.device('/cpu:0'): # always needs to be cpu

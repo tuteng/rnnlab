@@ -8,15 +8,15 @@ from sklearn.model_selection import train_test_split
 def calc_hca(x_data=None, y_data=None, num_h1=50, num_h2=30, num_epochs=50, mb_size=64, lr=0.001):
     ##########################################################################
     # load data
-    if not x_data:
+    if x_data:
         X = x_data
         Y = y_data
         input_dim = X.shape[1]
         num_classes = len(list(set(Y)))
     else:
-        X = np.genfromtxt(os.path.join('data', 'toyxy', 'toy_X.csv'), delimiter=',') # TODO path must be relative to file
+        X = np.genfromtxt(os.path.join(os.path.dirname(__file__), 'data', 'toyxy', 'toy_X.csv'), delimiter=',')
         X = np.repeat(X, 100, axis=0)
-        Y = np.genfromtxt(os.path.join('data', 'toyxy', 'toy_Y.csv'), delimiter=',')
+        Y = np.genfromtxt(os.path.join(os.path.dirname(__file__), 'data', 'toyxy', 'toy_Y.csv'), delimiter=',')
         Y = np.repeat(Y, 100, axis=0)
         input_dim = X.shape[1]
         num_classes = 3

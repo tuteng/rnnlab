@@ -53,7 +53,7 @@ class LSTM(object):
             ########################################################################
             # hidden state tensors
             c, h = tf.unpack(final_state, axis = 0) # THIS IS THE STUPID ORDER! (see tensorflow's rnn_cell.py line 321)
-            self.last_hidden_state = h
+            self.last_hidden_state = h # alternatively we can use act(c) to bypass output gating
             self.all_hidden_states = tf.reshape(outputs, [-1, num_hidden_units])
             ########################################################################
             # output layer
