@@ -1,12 +1,14 @@
 import time, socket, os
 from wtforms import Form, TextAreaField, validators
+from wtforms.validators import ValidationError
 from flask import Flask, redirect, url_for
 from flask import render_template
 from flask import request
 from bokeh.palettes import Category10
 from itertools import cycle
-import numpy as np
-import tensorflow as tf
+
+import tensorflow as tf  # TODO remove this
+
 
 from utils import get_log_mtime
 from utils import get_block_names_to_display
@@ -18,11 +20,12 @@ from utils import make_block_names2_dict
 from utils import load_database
 from utils import load_trajdatabase
 from utils import block_to_iteration
-from utils import create_rnn_graph
 from utils import load_rnnlabrc
-from utils import load_configs_dict
+from utils import complete_phrase
+
+
 from dbutils import load_token_data
-from dbutils import load_corpus_data
+
 
 from figs import make_neighbors_rbo_fig
 from figs import make_custom_neighbors_table_fig
@@ -64,11 +67,6 @@ headers_to_display = ['model_name', 'block_order',
                       'num_reps', 'num_iterations', 'completed', 'best_token_ba']
 
 
-class PhraseForm(Form):
-    ##########################################################################
-    phrase = TextAreaField('Type your phrase here:', [validators.DataRequired()])
-
-
 @app.route('/', methods=['GET', 'POST'])
 def log():
     ##########################################################################
@@ -95,28 +93,32 @@ def complete(model_name1, block_name1):
                      zip(['version', 'hostname', 'log_mtime'],
                          ['dev', socket.gethostname(), get_log_mtime()])}
     ##########################################################################
-    # make form
+    # inits
     phrase = None
-    predicted_token = None
+    output_dict = {}
+    num_samples_list = [1, 10, 50]
+    ##########################################################################
+    # make form
+    token_list = load_token_data(model_name1, 'token_list')
+
+    def vocab_validator(form, field):
+
+        tf.reset_default_graph()  # TODO get rid of this
+
+        input_token_list = field.data.split()
+        if any(map(lambda x: x not in token_list, input_token_list)):
+            raise ValidationError('Not in vocabulary')
+
+    class PhraseForm(Form):
+        phrase = TextAreaField('Type your phrase here:', [validators.InputRequired(),
+                                                          vocab_validator])
     form = PhraseForm(request.args)
+    ##########################################################################
+    # calc predicted_token
     if form.validate():
-        ##########################################################################
-        # calc predicted_token
         phrase = request.args.get('phrase')
-        token_id_dict = load_token_data(model_name1)[1]
-        token_list = load_token_data(model_name1)[0]
-        X = np.asarray([[token_id_dict[probe] for probe in phrase.split()]])
-        configs_dict = load_configs_dict(model_name1)
-        num_input_units = load_corpus_data(model_name1)[4]
-        rnn_graph = create_rnn_graph(num_input_units, configs_dict)
-        rnn_graph.saver.restore(rnn_graph.sess, os.path.join(runs_dir, model_name1, 'Weights',
-                                                             'weights_at_block_{}.ckpt'.format(block_name1)))
-        softmax_probs = rnn_graph.sess.run(rnn_graph.softmax_probs,
-                                           feed_dict={rnn_graph.x: X}).tolist()
-        token_id = np.argmax(softmax_probs)
-        predicted_token = token_list[token_id]
-        rnn_graph.sess.close()
-        tf.reset_default_graph()
+        for num_samples in num_samples_list:
+            output_dict[num_samples] = complete_phrase(model_name1, block_name1, phrase, num_samples=num_samples)
     ##########################################################################
     # render to html
     return render_template('complete.html',
@@ -125,7 +127,8 @@ def complete(model_name1, block_name1):
                            template_dict=template_dict,
                            form=form,
                            phrase=phrase,
-                           predicted_token=predicted_token)
+                           output_dict=output_dict,
+                           num_samples_list=num_samples_list)
 
 
 @app.route('/model/<string:model_name1>/', methods=['GET', 'POST'])

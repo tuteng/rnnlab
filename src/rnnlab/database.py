@@ -32,10 +32,11 @@ class DataBase:
         self.df = df
         ##########################################################################
         # load token & corpus data
-        self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
-        self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict = load_token_data(self.model_name)
-        self.probe_cf_traj_dict, self.num_train_doc_ids, \
-        self.tf_idf_mat, self.lex_div_traj, self.num_input_units = load_corpus_data(self.model_name)
+        self.probe_list = load_token_data(self.model_name, 'probe_list')
+        self.probe_cat_dict = load_token_data(self.model_name, 'probe_cat_dict')
+        self.cat_list = load_token_data(self.model_name, 'cat_list')
+        self.cat_probe_list_dict = load_token_data(self.model_name, 'cat_probe_list_dict')
+        self.probe_id_dict = load_token_data(self.model_name, 'probe_id_dict')
 
 
     def save_df(self, complevel=9):

@@ -20,38 +20,46 @@ def load_rnnlabrc(string): # .rnnlabrc file should specify gpu/cpu and runs_dir 
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
 
-def load_token_data(model_name):
+def load_token_data(model_name, *args):
     ##########################################################################
     path = os.path.join(runs_dir, model_name, 'Token_Data')
     file_name = 'token_data.npz'.format(model_name)
     npzfile = np.load(os.path.join(path, file_name))
     ##########################################################################
     # load
-    token_list, token_id_dict = npzfile['token_list'].tolist(), npzfile['token_id_dict'].item()
-    probe_list, probe_id_dict = npzfile['probe_list'].tolist(), npzfile['probe_id_dict'].item()
-    probe_cat_dict = npzfile['probe_cat_dict'].item()
-    cat_list = npzfile['cat_list'].tolist()
-    cat_probe_list_dict = {cat: [probe for probe in probe_list if probe_cat_dict[probe] == cat]
-                           for cat in cat_list}
+    token_data = []
+    for arg in args:
+        var = npzfile[arg]
+        if 'dict' in arg:
+            var = var.item()
+        elif 'list' in arg:
+            var = var.tolist()
+        token_data.append(var)
     ##########################################################################
-    return token_list, token_id_dict, probe_list, probe_id_dict,\
-           probe_cat_dict, cat_list, cat_probe_list_dict
+    # unpack if one var requested
+    if len(token_data) == 1: token_data = token_data[0]
+    ##########################################################################
+    return token_data
 
 
-def load_corpus_data(model_name):
+def load_corpus_data(model_name, *args):
     ##########################################################################
     path = os.path.join(runs_dir, model_name, 'Corpus_Data')
     file_name = 'corpus_data.npz'.format(model_name)
     npzfile = np.load(os.path.join(path, file_name))
     ##########################################################################
     # load
-    probe_cf_traj_dict = npzfile['probe_cf_traj_dict'].item()
-    num_train_doc_ids = npzfile['num_train_doc_ids']
-    tf_idf_mat = npzfile['tf_idf_mat']
-    lex_div_traj = npzfile['lex_div_traj']
-    num_input_units = npzfile['num_input_units']
+    corpus_data = []
+    for arg in args:
+        var = npzfile[arg]
+        if 'dict' in arg: var = var.item()
+        if 'list' in arg: var = var.tolist()
+        corpus_data.append(var)
     ##########################################################################
-    return probe_cf_traj_dict, num_train_doc_ids, tf_idf_mat, lex_div_traj, num_input_units
+    # unpack if one var requested
+    if len(corpus_data) == 1: corpus_data = corpus_data[0]
+    ##########################################################################
+    return corpus_data
 
 
 def calc_probe_sim_mat(all_acts_df, probe_list, method='pearson'): # TODO try changing method

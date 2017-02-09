@@ -185,7 +185,8 @@ class RNN():
                  probe_id_dict=self.corpus.probe_id_dict,
                  probe_list=self.corpus.probe_list,
                  probe_cat_dict=self.corpus.probe_cat_dict,
-                 cat_list=self.corpus.cat_list)
+                 cat_list=self.corpus.cat_list,
+                 cat_probe_list_dict=self.corpus.cat_probe_list_dict)
         ##########################################################################
         # make corpus data
         probe_cf_traj_dict = make_probe_cf_traj_dict(self.corpus, self.save_ev_block)

@@ -152,6 +152,16 @@ a {
     border: 0px;
     background: none;
 }
+.errors {
+    color : red;
+}
+
+.completed {
+    display: inline-block;
+    text-align: left;
+    padding-left: 10px;
+}
+
 
 
 

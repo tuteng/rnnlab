@@ -30,8 +30,8 @@ class Corpus(object):
         self.test_doc_ids, self.train_doc_ids = self.split_corpus(save_ev)
         self.num_train_doc_ids, self.num_test_doc_ids = len(self.train_doc_ids), len(self.test_doc_ids)
         self.num_total_train_docs = self.num_train_doc_ids * self.num_epochs
-        self.token_list, self.token_id_dict, self.probe_list,\
-        self.probe_id_dict, self.probe_cat_dict, self.cat_list = self.make_token_data()
+        self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
+        self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict = self.make_token_data()
 
 
     def get_corpus_content(self):
@@ -200,11 +200,10 @@ class Corpus(object):
         probe_list = sorted(probe_list)
         probe_id_dict = {probe: probe_list.index(probe) for probe in probe_list}
         cat_list = list(sorted(set(probe_cat_dict.values())))
+        cat_probe_list_dict = {cat: [probe for probe in probe_list if probe_cat_dict[probe] == cat]
+                               for cat in cat_list}
         ##########################################################################
         num_tokens, num_probes = len(token_list), len(probe_list)
         print 'Vocabulary size: {} | Num probes in vocab : {}'.format(num_tokens, num_probes)
         ##########################################################################
-        return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list
-
-
-
+        return token_list, token_id_dict, probe_list, probe_id_dict, probe_cat_dict, cat_list, cat_probe_list_dict

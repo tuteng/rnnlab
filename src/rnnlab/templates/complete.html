@@ -9,13 +9,7 @@
     <h1>{{model_name1}}</h1>
 <h3>Block {{block_name1}}</h3>
 
-{% if phrase %}
-{{phrase}}
-{{predicted_token}}
-{% endif %}
-
 {% from "_formhelpers.html" import render_field %}
-
 <form action="{{url_for('complete', model_name1=model_name1, block_name1=block_name1)}}">
     <dl>
         {{ render_field(form.phrase, cols='50', rows='1') }}
@@ -25,8 +19,16 @@
 </form>
 
 
-
-
+{% for num_samples in num_samples_list %}
+<div class="completed">
+    {% if phrase %}
+    <h4>Num samples: {{num_samples}}</h4>
+    {% for output in output_dict[num_samples] %}
+    <p><strong>{{phrase}}&nbsp;</strong>{{output}}</p>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endfor %}
 
 
 

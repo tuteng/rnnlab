@@ -11,10 +11,15 @@ import pandas as pd
 import numpy as np
 from bokeh.embed import components
 from sklearn.feature_extraction.text import TfidfVectorizer
+import tensorflow as tf
 
 
 
 from dbutils import load_rnnlabrc
+from dbutils import load_token_data
+from dbutils import load_corpus_data
+
+
 from database import DataBase
 from trajdatabase import TrajDataBase
 
@@ -507,3 +512,90 @@ def make_cat_conf_mat(database):
     mask[np.triu_indices_from(mask, 1)] = True
     ##########################################################################
     return cat_conf_mat, mask
+
+
+def get_excluded_tokens(token_id_dict, exc_criteria):
+    ##########################################################################
+    if exc_criteria == 1:
+        return [token_id_dict.get('PERIOD'),
+                token_id_dict.get('UNKNOWN'),
+                token_id_dict.get('COMMA'),
+                token_id_dict.get('EXCLAIM'),
+                token_id_dict.get('QUESTION'),
+                token_id_dict.get('xxx')]
+    elif exc_criteria == 2:
+        return [token_id_dict.get('UNKNOWN'),
+                token_id_dict.get('COMMA'),
+                token_id_dict.get('EXCLAIM'),
+                token_id_dict.get('QUESTION'),
+                token_id_dict.get('xxx')]
+    elif exc_criteria == 0:
+        return [token_id_dict.get('xxx'),
+                token_id_dict.get('UNKNOWN')]
+
+
+def complete_phrase(model_name, block_name, phrase, num_words=4, num_outputs=5,
+                    num_samples=50, sort_column=None, exc_criteria=0):
+    ##########################################################################
+    """
+    :param model_name: model_name
+    :param block_name: block_name
+    :param phrase: string containing tokens (validated by vocab_validator)
+    :param num_words: number of downstream words
+    :param num_outputs: number of output predictions
+    :param num_samples: number of random samples before selection
+    :param sort_column: sort output by this column
+    :param exc_criteria: exclusion criteria. 0=xxx and UNKNOWN. 1 adds punctuation. 2 adds PERIOD
+    :return: output_list: list containing num_outputs phrases (string)
+    """
+    ##########################################################################
+    # restore rnn
+    configs_dict = load_configs_dict(model_name)
+    num_input_units = load_corpus_data(model_name, 'num_input_units')
+    rnn_graph = create_rnn_graph(num_input_units, configs_dict)
+    rnn_graph.saver.restore(rnn_graph.sess, os.path.join(runs_dir, model_name, 'Weights',
+                                                         'weights_at_block_{}.ckpt'.format(block_name)))
+    ##########################################################################
+    # inits
+    token_id_dict, token_list = load_token_data(model_name, 'token_id_dict', 'token_list')
+    bptt_steps = configs_dict['bptt_steps']
+    excluded_words = get_excluded_tokens(token_id_dict, exc_criteria)
+    ##########################################################################
+    # calc multiple phrases
+    output_list = []
+    for i in range(num_outputs):
+        ##########################################################################
+        # calc single phrase
+        tokens_in_phrase = phrase.split()
+        num_tokens_in_phrase = len(tokens_in_phrase)
+        new_phrase = [[token_id_dict[x]] for x in tokens_in_phrase]
+        while not len(new_phrase) == num_words + len(tokens_in_phrase):
+            ##########################################################################
+            # get softmax probs
+            X = np.asarray(new_phrase)[-bptt_steps:].transpose()
+            [softmax_probs] = rnn_graph.sess.run(rnn_graph.softmax_probs, feed_dict={rnn_graph.x: X})
+            ##########################################################################
+            # calc new token and add to phrase
+            samples = np.zeros([num_input_units], float)
+            total_samples = 0
+            while total_samples < num_samples:
+                softmax_probs[0] -= sum(softmax_probs[:]) - 1.0  # need to ompensate for float arithmetic
+                new_sample = np.random.multinomial(1, softmax_probs)
+                current_index = np.argmax(new_sample)
+                if not current_index in excluded_words:
+                    samples += new_sample
+                    total_samples += 1
+            sampled_probe_id = np.argmax(samples)
+            new_phrase.append(np.asarray([sampled_probe_id]))
+        ##########################################################################
+        # convert phrase to string and add to output_list
+        phrase_str = ' '.join([token_list[token_id[0]] for token_id in new_phrase[num_tokens_in_phrase:]])
+        output_list.append(phrase_str)
+    ##########################################################################
+    # sort
+    if sort_column is not None: output_list.sort(key=lambda x: x[sort_column])
+    ##########################################################################
+    rnn_graph.sess.close()
+    tf.reset_default_graph()  # TODO can i reset variables without importing tensorlfow ?
+    ##########################################################################
+    return output_list
