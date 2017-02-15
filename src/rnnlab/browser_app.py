@@ -7,24 +7,18 @@ from flask import request
 from bokeh.palettes import Category10
 from itertools import cycle
 
-import tensorflow as tf  # TODO remove this
-
-
 from utils import get_log_mtime
-from utils import get_block_names_to_display
+from utils import make_block_names1
 from utils import make_imgs
 from utils import delete_model
 from utils import load_custom_probes_tuples
 from utils import load_filtered_log_entries
 from utils import make_block_names2_dict
 from utils import load_database
-from utils import load_trajdatabase
 from utils import block_to_iteration
 from utils import load_rnnlabrc
 from utils import complete_phrase
-
-
-from dbutils import load_token_data
+from utils import get_block_name_from_request
 
 
 from figs import make_neighbors_rbo_fig
@@ -36,7 +30,7 @@ from figs import make_probe_sim_comp_fig
 from figs import make_probe_freq_hist_fig
 from figs import make_cat_count_pie_chart_fig
 from figs import make_ba_pp_window_corr_fig
-from figs import make_ba_breakdown_scatter_fig
+from figs import make_ba_breakdown_annotated_fig
 from figs import make_ba_breakdown_fig
 from figs import make_cat_sim_dh_fig
 from figs import make_neighbors_table_fig
@@ -45,13 +39,16 @@ from figs import make_token_ba_trajs_fig
 from figs import make_cfreq_traj_fig
 from figs import make_cat_confusion_mat_fig
 from figs import make_corpus_traj_fig
-from figs import make_compprobes_fig
+from figs import make_comp_probes_ba_fig
 from figs import make_acts_dh_fig
-from figs import make_token_corcoeff_hist_fig
+from figs import make_token_acts_sim_hist_fig
 from figs import make_acts_2d_fig
 from figs import make_custom_cat_clust_fig
 from figs import make_cat_conf_diff_fig
 from figs import make_comp_binned_freqs_fig
+from figs import make_cat_token_ba_comp_fig
+from figs import make_num_synsets_ba_diff_corr_fig
+from figs import make_pairplot_fig
 
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
@@ -99,14 +96,10 @@ def complete(model_name1, block_name1):
     num_samples_list = [1, 10, 50]
     ##########################################################################
     # make form
-    token_list = load_token_data(model_name1, 'token_list')
-
+    database = load_database(model_name1, block_name1)
     def vocab_validator(form, field):
-
-        tf.reset_default_graph()  # TODO get rid of this
-
         input_token_list = field.data.split()
-        if any(map(lambda x: x not in token_list, input_token_list)):
+        if any(map(lambda x: x not in database.token_list, input_token_list)):
             raise ValidationError('Not in vocabulary')
 
     class PhraseForm(Form):
@@ -118,7 +111,7 @@ def complete(model_name1, block_name1):
     if form.validate():
         phrase = request.args.get('phrase')
         for num_samples in num_samples_list:
-            output_dict[num_samples] = complete_phrase(model_name1, block_name1, phrase, num_samples=num_samples)
+            output_dict[num_samples] = complete_phrase(database, phrase, num_samples=num_samples)
     ##########################################################################
     # render to html
     return render_template('complete.html',
@@ -145,7 +138,8 @@ def model(model_name1):
                          ['dev', socket.gethostname(), get_log_mtime()])}
     ##########################################################################
     # get model_names2 and block_names2_dict
-    block_names1 = get_block_names_to_display(model_name1)
+    database = load_database(model_name1)
+    block_names1 = make_block_names1(database)
     model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)
     #########################################################################
     if request.args.get('delete') is not None:
@@ -156,18 +150,18 @@ def model(model_name1):
         return redirect(url_for('log'))
     #########################################################################
     elif request.args.get('complete') is not None:
-        block_name1 = request.args.get('complete')
+        block_name1 = get_block_name_from_request(request, 'complete',
+                                                  block_names1)  # TODO make this work for all buttons
         return redirect(url_for('complete', model_name1=model_name1, block_name1=block_name1))
     ##########################################################################
     elif request.args.get('avgtrajBtn') == 'traj':
         imgs_desc = 'Average Trajectories'
-        trajdatabase = load_trajdatabase(model_name1)
+        database = load_database(model_name1)
         num_comparisons = 1
         palette = cycle(Category10[max(3, num_comparisons)][:num_comparisons])
-        fig_tuple1 = (make_avg_ba_traj_fig([trajdatabase], palette), 'mpl')
-        fig_tuple2 = (make_test_pp_trajs_fig([trajdatabase], palette), 'mpl')
-        fig_tuple3 = (make_ba_pp_window_corr_fig(trajdatabase), 'mpl')
-        trajdatabase.trajstore.close()
+        fig_tuple1 = (make_avg_ba_traj_fig([database], palette), 'mpl')
+        fig_tuple2 = (make_test_pp_trajs_fig([database], palette), 'mpl')
+        fig_tuple3 = (make_ba_pp_window_corr_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
     ##########################################################################
     elif request.args.get('dimredBtn') not in ['traj', None]:
@@ -188,9 +182,10 @@ def model(model_name1):
         block_name1 = request.args.get('bdBtn')
         imgs_desc = 'Balanced Accuracy Breakdown by Probe Block {}'.format(block_name1)
         database = load_database(model_name1, block_name1)
-        fig_tuple1 = (make_ba_breakdown_scatter_fig(database), 'mpl')
+        fig_tuple1 = (make_ba_breakdown_annotated_fig(database), 'mpl')
         fig_tuple2 = (make_ba_breakdown_fig(database), 'mpl')
-        imgs = make_imgs(fig_tuple1, fig_tuple2)
+        fig_tuple3 = (make_pairplot_fig(database), 'mpl')
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
     ##########################################################################
     elif request.args.get('clustBtn') not in ['traj', None]:
         block_name1 = request.args.get('clustBtn')
@@ -212,13 +207,12 @@ def model(model_name1):
     ##########################################################################
     elif request.args.get('batrajBtn') == 'traj':
         imgs_desc = 'Token Balanced Accuracy Trajectories'
-        trajdatabase = load_trajdatabase(model_name1)
+        database = load_database(model_name1)
         fig_tuples = []
-        for cat in trajdatabase.cat_list:
-            cat_probes = trajdatabase.cat_probe_list_dict[cat]
-            fig_tuples.append((make_token_ba_trajs_fig(trajdatabase, cat_probes), 'bokeh'))
-            fig_tuples.append((make_cfreq_traj_fig(trajdatabase, cat_probes), 'mpl'))
-        trajdatabase.trajstore.close()
+        for cat in database.cat_list:
+            cat_probes = database.cat_probe_list_dict[cat]
+            fig_tuples.append((make_token_ba_trajs_fig(database, cat_probes), 'bokeh'))
+            fig_tuples.append((make_cfreq_traj_fig(database, cat_probes), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('catconfBtn') not in ['traj', None]:
@@ -237,7 +231,7 @@ def model(model_name1):
         fig_tuples = []
         for custom_probe in custom_tuples:
             fig_tuples.append((make_acts_dh_fig(database, custom_probe), 'mpl'))
-            fig_tuples.append((make_token_corcoeff_hist_fig(database, custom_probe), 'mpl'))
+            fig_tuples.append((make_token_acts_sim_hist_fig(database, custom_probe), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('comp2models') not in ['traj', None]:
@@ -246,31 +240,33 @@ def model(model_name1):
         block_name1 = block_names1[block_name1_id]
         model_name2, block_name2 = comp2models_request[1], comp2models_request[2]
         databases = [load_database(model_name1, block_name1), load_database(model_name2, block_name2)]
-        trajdatabases = [load_trajdatabase(model_name1), load_trajdatabase(model_name2)]
         iteration = block_to_iteration(model_name1, block_name1)
         imgs_desc = 'Model Comparison Iteration {}'.format(iteration)
         num_comparisons = 2
         palette = cycle(Category10[max(3,num_comparisons)][:num_comparisons])
         fig_tuple1 = (make_ba_bds_fig(databases, palette), 'mpl')
-        fig_tuple2 = (make_avg_ba_traj_fig(trajdatabases, palette), 'mpl')
-        fig_tuple3 = (make_test_pp_trajs_fig(trajdatabases, palette),'mpl')
+        fig_tuple2 = (make_avg_ba_traj_fig(databases, palette), 'mpl')
+        fig_tuple3 = (make_test_pp_trajs_fig(databases, palette), 'mpl')
         fig_tuple4 = (make_probe_sim_comp_fig(databases, palette), 'mpl')
         custom_probes_tuples = load_custom_probes_tuples()
         custom_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customn']
         fig_tuple5 = (make_neighbors_rbo_fig(databases, custom_probes), 'bokeh')
         fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
-        for trajdatabase in trajdatabases: trajdatabase.trajstore.close()
-        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4, fig_tuple5, fig_tuple6)
+        fig_tuple7 = (make_num_synsets_ba_diff_corr_fig(databases), 'mpl')  # TODO
+        fig_tuples = []
+        for cat in database.cat_list:
+            fig_tuples.append((make_cat_token_ba_comp_fig(databases, cat), 'mpl'))
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3,
+                         fig_tuple4, fig_tuple5, fig_tuple6, fig_tuple7, *fig_tuples)
     ##########################################################################
     elif request.args.get('compprobes') == 'traj':
         imgs_desc = 'Probe Comparison'
-        trajdatabase = load_trajdatabase(model_name1)
+        database = load_database(model_name1)
         custom_probes_tuples = load_custom_probes_tuples()
         comp_probe_tuples = [tuple for tuple in custom_probes_tuples
                              if not tuple[1] in ['custompdh','customn','freqhist','customclust']]
-        fig_tuple1 = (make_compprobes_fig(trajdatabase, comp_probe_tuples), 'mpl')
-        fig_tuple2 = (make_comp_binned_freqs_fig(trajdatabase, comp_probe_tuples), 'mpl')
-        trajdatabase.trajstore.close()
+        fig_tuple1 = (make_comp_probes_ba_fig(database, comp_probe_tuples), 'mpl')
+        fig_tuple2 = (make_comp_binned_freqs_fig(database, comp_probe_tuples), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2)
     ##########################################################################
     elif request.args.get('customn') not in ['traj', None]:
@@ -283,17 +279,15 @@ def model(model_name1):
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
     elif request.args.get('freqhist') == 'traj':
-        trajdatabase = load_trajdatabase(model_name1)
         last_block_name = block_names1[-1]
         database = load_database(model_name1, last_block_name)
         imgs_desc = 'Token & Corpus Data'
         custom_probes_tuples = load_custom_probes_tuples()
         freqhist_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'freqhist']
-        fig_tuple1 = (make_probe_freq_hist_fig(trajdatabase, freqhist_probes), 'mpl')
+        fig_tuple1 = (make_probe_freq_hist_fig(database, freqhist_probes), 'mpl')
         fig_tuple2 = (make_cat_count_pie_chart_fig(database), 'mpl')
-        # fig_tuple3 = (make_corpus_traj_fig(trajdatabase), 'bokeh')
-        trajdatabase.trajstore.close()
-        imgs = make_imgs(fig_tuple1, fig_tuple2) #, fig_tuple3)
+        fig_tuple3 = (make_corpus_traj_fig(database), 'bokeh')  # TODO make this work
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
     ##########################################################################
     elif request.args.get('customclust') not in ['traj', None]:
         block_name1 = request.args.get('customclust')

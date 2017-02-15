@@ -27,7 +27,7 @@ Next, create **.rnnlabrc** and include the following inside: ::
 
     runs_dir <path to where you want to save model data>
     gpu <True or False depending on your setup>
-
+    num_ba_samples <num samples to use when calculating balanced accuracy of a probe>
 
 That's it! You've just told rnnlab where to save model data and whether or not to use the gpu (recommended) to speed up training time.
 

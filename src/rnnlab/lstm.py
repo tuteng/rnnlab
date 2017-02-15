@@ -1,8 +1,7 @@
 
 
 import tensorflow as tf
-from dbutils import load_rnnlabrc
-
+from database import load_rnnlabrc
 
 class LSTM(object):
     '''

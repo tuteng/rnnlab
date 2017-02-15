@@ -1,7 +1,7 @@
 
 
 import tensorflow as tf
-from dbutils import load_rnnlabrc
+from database import load_rnnlabrc
 
 
 class SRN(object):
@@ -21,6 +21,7 @@ class SRN(object):
         optimizer = configs_dict['optimizer']
         ##########################################################################
         device = '/gpu:0' if (load_rnnlabrc('gpu')) == 'True' else '/cpu:0'
+        print 'Using device: {}'.format(device)
         ##########################################################################
         # weights
         with tf.device('/cpu:0'): # always needs to be cpu
@@ -68,10 +69,8 @@ class SRN(object):
             ########################################################################
             # training step definition
             if optimizer == 'adagrad':
-                print 'Using Adagrad optmizer'
                 self.train_step = tf.train.AdagradOptimizer(learning_rate).minimize(total_loss)
             else:
-                print 'Using SGD optmizer'
                 self.train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(total_loss)
         ########################################################################
         # saver

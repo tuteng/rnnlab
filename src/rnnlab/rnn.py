@@ -6,7 +6,6 @@ import sys
 import time
 from itertools import groupby
 from operator import itemgetter
-
 import numpy as np
 import pandas as pd
 import pyprind
@@ -14,7 +13,7 @@ import tensorflow as tf
 
 from corpus import Corpus
 from database import DataBase
-from trajdatabase import TrajDataBase
+
 from utils import create_rnn_graph
 from utils import check_disk_space
 from utils import get_log_entries_list
@@ -26,6 +25,9 @@ from utils import make_rnnlab_alias
 from utils import make_tf_idf_mat
 from utils import remove_log_entry
 from utils import to_block_name
+from utils import calc_token_ba_list
+
+
 
 np.set_printoptions(suppress=True)
 
@@ -71,6 +73,8 @@ class RNN():
         self.mb_size = int(self.configs_dict['mb_size'])
         self.num_hidden_units = int(self.configs_dict['num_hidden_units'])
         self.bptt_steps = int(self.configs_dict['bptt_steps'])
+        self.stop_block_name = to_block_name(self.corpus.num_train_doc_ids * self.num_epochs)
+        self.avg_token_ba_list = []
 
 
     def train(self):
@@ -80,13 +84,10 @@ class RNN():
         # inits
         elapsed_start = time.time()
         num_mbs_trained, total_num_examples_seen, completed = 0, 0, False
-        stop_block_id = self.corpus.num_train_doc_ids * self.num_epochs
-        stop_block_name = to_block_name(stop_block_id)
-        avg_token_ba_list = []
         ##########################################################################
         # save to data base before training
         print 'Saving data from untrained model...'
-        self.save_data_to_databases(to_block_name(0))
+        self.data_step(to_block_name(0))
         ##########################################################################
         # training blocks
         for block_name, block_id in self.corpus.gen_train_block_name_and_id():
@@ -102,48 +103,51 @@ class RNN():
                     self.rnn_graph.sess.run(self.rnn_graph.train_step,
                                             feed_dict={self.rnn_graph.x: X, self.rnn_graph.y: Y})
             ##########################################################################
-            # save_to_database
+            # data_step
             if int(block_name) % self.save_ev_block == 0:
-                start = time.time()
-                test_pp, avg_token_ba = self.save_data_to_databases(block_name)
-                #########################################################################
-                # print to console
-                print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(
-                    test_pp, avg_token_ba, int(abs(time.time() - start)))
-                avg_token_ba_list.append(avg_token_ba)
-                #########################################################################
-                # update log with best_avg_token_ba and completed
-                best_avg_token_ba = np.max(np.asarray(avg_token_ba_list))
-                completed = 1 if stop_block_name == block_name else 0
-                self.update_log(best_avg_token_ba, completed)
+                self.data_step(block_name)
         ##########################################################################
         # at end of training, close session and upload data
         self.complete_training()
 
-
-
-    def save_data_to_databases(self, block_name):
+    def data_step(self, block_name):
+        ##########################################################################
+        start = time.time()
         ##########################################################################
         # save checkpoint
         self.save_ckpt(block_name)
         ##########################################################################
-        # make database
+        # extract acts
         df = self.make_df()
+        ##########################################################################
+        # analyze acts
         database = DataBase(self.configs_dict, df, block_name)
+        test_pp, avg_token_ba, token_ba_list = self.analyze(database)
         ##########################################################################
-        # make trajectory data and append to trajdatabase (token_ba, test_pp and hca data)
-        trajdatabase = TrajDataBase(self.configs_dict, mode='a')
+        # save to disk
+        database.save_to_disk(block_name, test_pp, avg_token_ba, token_ba_list)
+        #########################################################################
+        # print to console
+        print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(
+            test_pp, avg_token_ba, int(abs(time.time() - start)))
+        self.avg_token_ba_list.append(avg_token_ba)
+        #########################################################################
+        # update log with best_avg_token_ba and completed
+        best_avg_token_ba = max(self.avg_token_ba_list)
+        completed = 1 if self.stop_block_name == block_name else 0
+        self.update_log(best_avg_token_ba, completed)
+
+    def analyze(self, database):
+        ##########################################################################
+        # calc token_ba_list
+        num_ba_samples = int(load_rnnlabrc('num_ba_samples'))
+        token_ba_list = calc_token_ba_list(database, num_samples=num_ba_samples)
+        avg_token_ba = np.mean(token_ba_list)
+        ##########################################################################
+        # calc test perplexity
         test_pp = self.calc_test_pp()
-        new_entry, test_pp, avg_token_ba, token_ba_list = trajdatabase.calc_new_entry(
-            df, database.make_all_acts_df(), test_pp, block_name)
-        trajdatabase.append_entry(new_entry)
         ##########################################################################
-        # add token_ba_col to main database and save
-        token_ba_col = [token_ba_list[database.probe_list.index(probe)] for probe in database.df['probe']]
-        database.df['token_ba'] = token_ba_col
-        database.save_df()
-        ##########################################################################
-        return test_pp, avg_token_ba
+        return test_pp, avg_token_ba, token_ba_list
 
 
 
