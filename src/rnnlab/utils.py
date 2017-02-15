@@ -948,7 +948,7 @@ def calc_num_probe_acts_clusters(database, probe):
     return num_probe_acts_clusters
 
 
-def plot_best_fit_line(ax, xys):
+def plot_best_fit_line(ax, xys, fontsize):
     ##########################################################################
     x, y = zip(*xys)
     best_fit_fxn = np.polyfit(x, y, 1, full=True)
@@ -962,4 +962,4 @@ def plot_best_fit_line(ax, xys):
     variance = np.var(y)
     residuals = np.var([(slope * xx + intercept - yy) for xx, yy in zip(x, y)])
     Rsqr = np.round(1 - residuals / variance, decimals=4)
-    ax.text(0.01, 0.9, '$R^2$ = {}'.format(Rsqr), fontsize=16)
+    ax.text(0.01, 0.9, '$R^2$ = {}'.format(Rsqr), fontsize=fontsize)

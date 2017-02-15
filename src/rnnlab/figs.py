@@ -1033,13 +1033,8 @@ def make_probe_sim_comp_fig(databases, palette, num_bins = 1000, num_samples=100
     axarr[0].scatter(x_scatter, y_scatter, s=markersize, c='black', lw=0)
     ##########################################################################
     # plot best fit line
-    plot_best_fit_line(axarr[0], (x, y))  # TODO make sure thsi still works
-    # ##########################################################################
-    # # plot rsqrd
-    # variance = np.var(y)
-    # residuals = np.var([(slope * xx + intercept - yy) for xx, yy in zip(x, y)])
-    # Rsqr = np.round(1 - residuals / variance, decimals=4)
-    # axarr[0].text(0.01, 0.9, '$R^2$ = {}'.format(Rsqr), fontsize=leg_fontsize)
+    xys = zip(x, y)
+    plot_best_fit_line(axarr[0], xys, leg_fontsize)
     ##########################################################################
     # axis 1
     axarr[1].set_xlabel('Similarity', fontsize=ax_font_size)
@@ -1092,7 +1087,7 @@ def make_neighbors_rbo_fig(databases, probes, num_neighbors=10):
     return fig
 
 
-def make_cat_token_ba_comp_fig(databases, cat, cutoff=10):
+def make_cat_token_ba_comp_fig(databases, cat, max_num_probes=50, ylim=20):
     ##########################################################################
     # load data
     database1, database2, = databases
@@ -1103,7 +1098,7 @@ def make_cat_token_ba_comp_fig(databases, cat, cutoff=10):
     _, _, token_ba_list2 = database2.get_ba_breakdown_data()
     ba_diff_list_all = np.subtract(token_ba_list1, token_ba_list2)
     ba_diff_tuples = [(ba_diff_list_all[i], probe) for i, probe in zip(probe_ids, probes)]
-    ba_diff_tuples_sorted = sorted(ba_diff_tuples, key=itemgetter(0), reverse=True)[:cutoff]
+    ba_diff_tuples_sorted = sorted(ba_diff_tuples, key=itemgetter(0), reverse=True)[:max_num_probes]
     ba_diff_list, probes = zip(*ba_diff_tuples_sorted)  # unpack tuples
     ##########################################################################
     # seaborn
@@ -1113,6 +1108,7 @@ def make_cat_token_ba_comp_fig(databases, cat, cutoff=10):
     # fig
     figsize = (6, 3)
     ax_font_size = 8
+    linewidth = 2
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
     # axis
@@ -1122,11 +1118,13 @@ def make_cat_token_ba_comp_fig(databases, cat, cutoff=10):
     ax.tick_params(axis='both', which='both', top='off', right='off', bottom='off')
     ax.set_ylabel('Balanced Accuracy Difference', fontsize=ax_font_size)
     ax.set_xlabel('Probes in {}'.format(cat), fontsize=ax_font_size)
+    xticks = np.add(range(len(probes)), 0.5)
+    ax.set_xticks(xticks)
     ax.set_xticklabels(probes, fontsize=ax_font_size, rotation=90)
-    ax.set_ylim([-20, 20])
+    ax.set_ylim([-ylim, ylim])
     ##########################################################################
     # plot
-    sns.barplot(x=probes, y=ba_diff_list, ax=ax)
+    ax.plot(xticks, ba_diff_list, '.-', c='black', linewidth=linewidth)
     ax.axhline(0, linestyle='--', color='grey')
     ##########################################################################
     # layout

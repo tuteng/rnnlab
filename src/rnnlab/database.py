@@ -239,6 +239,6 @@ def load_rnnlabrc(string):
             if line.startswith(string):
                 rc = line.split()[1]
     if rc is None:
-        sys.exit('rnnlab: Did not find "{}" in .rnnlabrc'.format(rc))
+        sys.exit('rnnlab: Did not find "{}" in .rnnlabrc'.format(string))
     ##########################################################################
     return rc

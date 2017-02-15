@@ -140,7 +140,10 @@ class RNN():
     def analyze(self, database):
         ##########################################################################
         # calc token_ba_list
-        num_ba_samples = int(load_rnnlabrc('num_ba_samples'))
+        if int(database.block_name) == 0:
+            num_ba_samples = None
+        else:
+            num_ba_samples = int(load_rnnlabrc('num_ba_samples'))
         token_ba_list = calc_token_ba_list(database, num_samples=num_ba_samples)
         avg_token_ba = np.mean(token_ba_list)
         ##########################################################################
