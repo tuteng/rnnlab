@@ -500,9 +500,8 @@ def make_pairplot_fig(database, min_num_probe_acts=10):
             for key, value in zip(keys, values):
                 df_dict[key].append(value)
 
-            if num_probe_acts_clusters > 3:
-                print '{} \nnum clusters: {} \nnum probe acts: {}'.format(
-                    probe, num_probe_acts_clusters, num_probe_acts)
+            print '{} \nnum clusters: {} \nnum probe acts: {}'.format(
+                probe, num_probe_acts_clusters, num_probe_acts)
 
     df = pd.DataFrame(df_dict, index=probes)
     ##########################################################################

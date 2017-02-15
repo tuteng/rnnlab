@@ -1,5 +1,6 @@
 import os
 import csv
+import random
 import time
 import multiprocessing as mp
 import shutil
@@ -937,13 +938,16 @@ def load_num_synsets(probe, verbose=False):
     return num_synsets
 
 
-def calc_num_probe_acts_clusters(database, probe):
+def calc_num_probe_acts_clusters(database, probe, method='gap'):
     ##########################################################################
     acts_mat = database.get_token_acts_df(probe).values
-    lnk0 = linkage(pdist(acts_mat))
-    acceleration = np.diff(lnk0[-10:, :], 2)  # 2nd derivative of the distances
-    acceleration_rev = acceleration[::-1]
-    num_probe_acts_clusters = acceleration_rev.argmax() + 2
+    if method == 'elbow':
+        lnk0 = linkage(pdist(acts_mat))
+        acceleration = np.diff(lnk0[-10:, :], 2)  # 2nd derivative of the distances
+        acceleration_rev = acceleration[::-1]
+        num_probe_acts_clusters = acceleration_rev.argmax() + 2
+    else:
+        raise NotImplementedError
     ##########################################################################
     return num_probe_acts_clusters
 
