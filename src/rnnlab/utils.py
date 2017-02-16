@@ -618,10 +618,10 @@ def calc_hca(database, acts_cols, cat_col, epochs=30):
     return train_hca, test_hca
 
 
-def calc_token_ba_list(database, num_samples=None, thr_step=0.001, verbose=False):
+def calc_avg_probe_ba_list(database, num_ba_samples=None, thr_step=0.001, verbose=False):
     ##########################################################################
     # calc simmat
-    probe_simmat, probe_simmat_labels = calc_probe_sim_mat(database, num_samples)
+    probe_simmat, probe_simmat_labels = calc_probe_sim_mat(database, num_ba_samples)
     ##########################################################################
     print 'Calculating balanced accuracy...'
     ##########################################################################
@@ -662,13 +662,13 @@ def calc_token_ba_list(database, num_samples=None, thr_step=0.001, verbose=False
     ##########################################################################
     print 'Took {} minutes to calc ba'.format(abs(time.time() - start) / 60.)
     ##########################################################################
-    # make token_ba_list
+    # make ba_list
     token_ba_mat_col_means = np.nanmean(ba_mat, 0)
     best_token_ba_mat_col_id = np.argmax(token_ba_mat_col_means)
-    token_ba_list = np.multiply(ba_mat[:, best_token_ba_mat_col_id], 100).tolist()
+    ba_list = np.multiply(ba_mat[:, best_token_ba_mat_col_id], 100).tolist()
     tmp_df = pd.DataFrame(data={'probe': probe_simmat_labels,
-                                'token_ba': token_ba_list})
-    token_ba_list = tmp_df.groupby('probe').mean()['token_ba'].values
+                                'token_ba': ba_list})
+    ba_list = tmp_df.groupby('probe').mean()['token_ba'].values
     ##########################################################################
     # save confusion data
     cat_confusion_mat_data = cat_confusion_mat_data_list[best_token_ba_mat_col_id]
@@ -679,15 +679,15 @@ def calc_token_ba_list(database, num_samples=None, thr_step=0.001, verbose=False
              hits_by_cat_dict=cat_confusion_mat_data[0],
              fas_by_cat_dict=cat_confusion_mat_data[1])
     ##########################################################################
-    return token_ba_list  # TODO change this to return non-averaged ba, AND averaged ba
+    return ba_list  # TODO change this to return non-averaged ba, AND averaged ba
 
 
-def calc_probe_sim_mat(database, num_samples=None, method='pearson'):  # TODO num_samples should be in configs
+def calc_probe_sim_mat(database, num_ba_samples=None, method='pearson'):
     ##########################################################################
     print 'Calculating probe simmat...'
     ##########################################################################
     # calc sim mat
-    all_acts_df, all_acts_labels = database.get_all_acts_df(num_samples)
+    all_acts_df, all_acts_labels = database.get_all_acts_df(num_ba_samples)
     probe_simmat = all_acts_df.T.corr(method=method).values
     probe_simmat_labels = all_acts_labels
     nan_ids = np.where(np.isnan(probe_simmat).all(axis=1))[0]
@@ -938,14 +938,17 @@ def load_num_synsets(probe, verbose=False):
     return num_synsets
 
 
-def calc_num_probe_acts_clusters(database, probe, method='gap'):
+def calc_num_probe_acts_clusters(database, probe, min_num_acts=1, method='elbow'):
     ##########################################################################
     acts_mat = database.get_token_acts_df(probe).values
     if method == 'elbow':
-        lnk0 = linkage(pdist(acts_mat))
-        acceleration = np.diff(lnk0[-10:, :], 2)  # 2nd derivative of the distances
-        acceleration_rev = acceleration[::-1]
-        num_probe_acts_clusters = acceleration_rev.argmax() + 2
+        if len(acts_mat) > min_num_acts:
+            lnk0 = linkage(pdist(acts_mat))
+            acceleration = np.diff(lnk0[-10:, :], 2)  # 2nd derivative of the distances
+            acceleration_rev = acceleration[::-1]
+            num_probe_acts_clusters = acceleration_rev.argmax() + 2
+        else:
+            num_probe_acts_clusters = 2
     else:
         raise NotImplementedError
     ##########################################################################

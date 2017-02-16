@@ -14,7 +14,7 @@
             {% for btn_name in btn_names_top %}
                 <div class="dropdown">
                     <button name="{{btn_name}}" value="traj" class="dropbtn">{{btn_name}}</button>
-                    {% if btn_name not in  ['avgtrajBtn', 'batrajBtn'] %}
+                    {% if btn_name not in ['avgtrajBtn', 'trajBtn'] %}
                         <div class="dropdown-content">
                             {% for block_name in block_names1 %}
                             <button name="{{btn_name}}" value="{{block_name}}"><b>{{loop.index0+1}}.</b> {{block_name}}</button>
@@ -61,20 +61,22 @@
     </form>
 
 
-    {% if imgs %}
+{% if imgs_desc %}
         <div id="Modal" class="modal">
             <div class="modal-content">
                 <span class="close">&times;</span>
                 <h2>Model Name: {{model_name1}}</h2>
                 <h3>{{imgs_desc}}</h3>
+                {% if imgs %}
                 {% for img in imgs %}
-                    {% if img.script %}
-                        {{ img.div|safe }}
-                        {{ img.script|safe }}
-                    {% else %}
-                        <img src="data:image/png;base64,{{ img }}">
-                    {% endif %}
+                {% if img.script %}
+                {{ img.div|safe }}
+                {{ img.script|safe }}
+                {% else %}
+                <img src="data:image/png;base64,{{ img }}">
+                {% endif %}
                 {% endfor %}
+                {% endif %}
             </div>
         </div>
     {% endif %}

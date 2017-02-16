@@ -27,6 +27,7 @@ from utils import gen_neighbor_name_and_sim
 from utils import load_num_synsets
 from utils import calc_num_probe_acts_clusters
 from utils import plot_best_fit_line
+from utils import block_to_iteration
 
 from database import load_rnnlabrc
 runs_dir = load_rnnlabrc('runs_dir')
@@ -72,8 +73,7 @@ def make_acts_2d_fig(database, sv_nums=(2, 3), perplexity=30, label_probe=False,
             txt = axarr[n].text(xtext, ytext, str(cat), fontsize=label_fontsize,
                                 color=palette[database.cat_list.index(cat)])
             txt.set_path_effects([
-                PathEffects.Stroke(linewidth=path_linewidth, foreground="w"),
-                PathEffects.Normal()])
+                PathEffects.Stroke(linewidth=path_linewidth, foreground="w"), PathEffects.Normal()])
         ##########################################################################
         # add the labels for each probe
         if label_probe:
@@ -82,8 +82,7 @@ def make_acts_2d_fig(database, sv_nums=(2, 3), perplexity=30, label_probe=False,
                 xtext, ytext = np.median(x[x_ids, :], axis=0)
                 txt = axarr[n].text(xtext, ytext, str(probe), fontsize=label_fontsize)
                 txt.set_path_effects([
-                    PathEffects.Stroke(linewidth=path_linewidth, foreground="w"),
-                    PathEffects.Normal()])
+                    PathEffects.Stroke(linewidth=path_linewidth, foreground="w"), PathEffects.Normal()])
     ##########################################################################
     # layout
     fig.tight_layout()
@@ -91,30 +90,50 @@ def make_acts_2d_fig(database, sv_nums=(2, 3), perplexity=30, label_probe=False,
     return fig
 
 
-def make_token_acts_sim_hist_fig(database, probe, bins=100):
+def make_token_acts_avg_act_corr_fig(databases, probe):
     ##########################################################################
     # load data
-    probe_acts_df = database.get_token_acts_df(probe)
-    df_corr = probe_acts_df.T.corr(method='pearson')
-    mask_mat = np.triu(np.ones(df_corr.shape)).astype(np.bool)  # don't need this
-    corr_mat_nans = np.asarray(df_corr.mask(mask_mat))  # replaces redundant values with nans
-    corr_mat = corr_mat_nans[~np.isnan(corr_mat_nans)]
+    cat = databases[-1].probe_cat_dict[probe]
+    last_avg_cat_act = np.mean(databases[-1].get_cat_acts_df(cat).values, axis=0)
+    last_avg_token_act = np.mean(databases[-1].get_token_acts_df(probe).values, axis=0)
+    num_token_acts = len(databases[-1].get_token_acts_df(probe))
+    traj_mat_ax0 = np.zeros((num_token_acts, len(databases)))
+    traj_mat_ax1 = np.zeros((num_token_acts, len(databases)))
+    for n, database in enumerate(databases):
+        token_acts_mat = database.get_token_acts_df(probe).values
+        traj_mat_ax0[:, n] = [np.corrcoef(token_act, last_avg_token_act)[1, 0] for token_act in token_acts_mat]
+        traj_mat_ax1[:, n] = [np.corrcoef(token_act, last_avg_cat_act)[1, 0] for token_act in token_acts_mat]
+    xys_ax0, xys_ax1 = [], []
+    for row_ax0, row_ax1 in zip(traj_mat_ax0, traj_mat_ax1):
+        x = databases[-1].get_xaxis()
+        y = row_ax0
+        xys_ax0.append((x, y))
+        y = row_ax1
+        xys_ax1.append((x, y))
     ##########################################################################
     # fig 
     figsize = (6, 4)
     ax_font_size = 8
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, axarr = plt.subplots(2, 1, figsize=figsize)
     ##########################################################################
     # axes
-    ax.set_xlabel('Pearson Correlation Coefficient', fontsize=ax_font_size)
-    ax.set_ylabel('Number of observations of "{}'.format(probe), fontsize=ax_font_size)
-    ax.set_xlim([0, 1])  # this doesn't work well for block 0001
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    ax.tick_params(axis='both', which='both', top='off', right='off')
+    for n, ax in enumerate(axarr):
+        if n == 0:
+            ax.set_ylabel('Corr with last avg act of "{}"'.format(probe), fontsize=ax_font_size)
+        else:
+            ax.set_ylabel('Corr with last avg act of {}'.format(cat), fontsize=ax_font_size)
+        ax.set_xlabel('Training Iterations', fontsize=ax_font_size)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='both', top='off', right='off')
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+        ax.set_ylim([0, 1])
     ##########################################################################
     # plot
-    ax.hist(corr_mat, bins)
+    for (x, y) in xys_ax0:
+        axarr[0].plot(x, y, '-')
+    for (x, y) in xys_ax1:
+        axarr[1].plot(x, y, '-')
     ##########################################################################
     # layout
     fig.tight_layout()
@@ -479,30 +498,33 @@ def make_custom_cat_clust_fig(database, cats):
 
 def make_pairplot_fig(database, min_num_probe_acts=10):
     ##########################################################################
+    from scipy.stats import kurtosis
+
     # load data
-    _, _, token_ba_list = database.get_ba_breakdown_data()
-    keys = ['num_probe_acts', 'token_ba', 'num_synsets', 'num_probe_acts_clusters']
+    _, _, avg_probe_ba_list = database.get_ba_breakdown_data()
+    keys = ['acts_sim_std', 'num_probe_acts', 'token_ba', 'avg_probe_pp']
     df_dict = {key: [] for key in keys}
     probes = []
     for n, probe in enumerate(database.probe_list):
         probe_acts_df = database.get_token_acts_df(probe)
         if len(probe_acts_df) > min_num_probe_acts:
             probes.append(probe)
+            avg_probe_pp = database.get_avg_probe_pp(probe)
             df_corr = probe_acts_df.T.corr(method='pearson')
             mask_mat = np.triu(np.ones(df_corr.shape)).astype(np.bool)
             corr_mat_nans = np.asarray(df_corr.mask(mask_mat))
             mean_acts_sim = np.nanmean(corr_mat_nans)
+            ptp_acts_sim = np.ptp(corr_mat_nans[~np.isnan(corr_mat_nans)])
+            acts_sim_std = np.std(corr_mat_nans[~np.isnan(corr_mat_nans)])
             num_probe_acts = len(df_corr)
-            token_ba = token_ba_list[n]
+            token_ba = avg_probe_ba_list[n]
+            cat_member_count = len(database.cat_probe_list_dict[database.probe_cat_dict[probe]])
             num_synsets = max(load_num_synsets(probe), 1)
             num_probe_acts_clusters = calc_num_probe_acts_clusters(database, probe)
-            values = [num_probe_acts, token_ba, num_synsets, num_probe_acts_clusters]
+            probe_freq = database.probe_cf_traj_dict[probe][-1]
+            values = [acts_sim_std, num_probe_acts, token_ba, avg_probe_pp]
             for key, value in zip(keys, values):
                 df_dict[key].append(value)
-
-            print '{} \nnum clusters: {} \nnum probe acts: {}'.format(
-                probe, num_probe_acts_clusters, num_probe_acts)
-
     df = pd.DataFrame(df_dict, index=probes)
     ##########################################################################
     # choose seaborn style and palette
@@ -512,19 +534,23 @@ def make_pairplot_fig(database, min_num_probe_acts=10):
     # plot
     fig = sns.pairplot(df)
     ##########################################################################
+    # axis
+    for ax in fig.axes.flat:
+        plt.setp(ax.get_xticklabels(), rotation=-90)
+    ##########################################################################
     return fig
 
 
 def make_ba_breakdown_fig(database):
     ##########################################################################
     # load data
-    cats_sorted_by_ba, cat_ba_dict, token_ba_list = database.get_ba_breakdown_data()
+    cats_sorted_by_ba, cat_ba_dict, avg_probe_ba_list = database.get_ba_breakdown_data()
     xys = []
     for n, cat in enumerate(cats_sorted_by_ba):
         cat_probe_list = database.cat_probe_list_dict[cat]
         cat_probe_ids = [database.probe_list.index(e_token) for e_token in cat_probe_list]
         xs = [n + 0.5] * len(cat_probe_list)
-        ys = token_ba_list[cat_probe_ids]
+        ys = np.asarray(avg_probe_ba_list)[cat_probe_ids]
         markersizes = np.square(map(load_num_synsets, cat_probe_list))
         xys.append((xs, ys, markersizes))
     ##########################################################################
@@ -559,7 +585,7 @@ def make_ba_breakdown_fig(database):
 def make_ba_breakdown_annotated_fig(database):
     ##########################################################################
     # make cat_probe_list_dict and cats_sorted_by_ba
-    cats_sorted_by_ba, cat_ba_dict, token_ba_list = database.get_ba_breakdown_data()
+    cats_sorted_by_ba, cat_ba_dict, avg_probe_ba_list = database.get_ba_breakdown_data()
     ##########################################################################
     # fig
     figsize = (12, 8)
@@ -589,7 +615,7 @@ def make_ba_breakdown_annotated_fig(database):
         annotated_y_ints_long_words_curr_cat = []
         cat_probe_list = database.cat_probe_list_dict[cat]
         cat_probe_ids = [database.probe_list.index(e_token) for e_token in cat_probe_list]
-        xs, ys = [cat_id for i in range(len(cat_probe_ids))], token_ba_list[cat_probe_ids]
+        xs, ys = [cat_id for i in range(len(cat_probe_ids))], np.asarray(avg_probe_ba_list)[cat_probe_ids]
         ax.plot(xs, ys, 'b.', alpha=0)  # this needs to be plot for annotation to work
         ##########################################################################
         # annotate points
@@ -686,12 +712,10 @@ def make_cat_conf_diff_fig(databases):
     return fig
 
 
-
-
-def make_token_ba_trajs_fig(trajdatabase, probes):
+def make_avg_probe_ba_trajs_fig(database, probes):
     ##########################################################################
     # load data
-    token_ba_traj_mat = trajdatabase.get_token_ba_traj_mat(probes)
+    avg_probe_ba_trajs_mat = database.get_trajs_mat(probes, 'avg_probe_ba')
     ##########################################################################
     # choose seaborn style and palette
     import seaborn as sns
@@ -711,27 +735,56 @@ def make_token_ba_trajs_fig(trajdatabase, probes):
     fig.y_range = Range1d(0, 100)
     ##########################################################################
     # plot
-    x = trajdatabase.get_xaxis()
-    for n, y in enumerate(token_ba_traj_mat):
+    x = database.get_xaxis()
+    for n, y in enumerate(avg_probe_ba_trajs_mat):
         source = ColumnDataSource(data=dict(x=x, y=y, probe=[probes[n]] * len(x)))
         fig.line(x='x', y='y', line_color=next(palette), line_width=linewidth, source=source)
     ##########################################################################
     return fig
 
 
-def make_cfreq_traj_fig(trajdatabase, probes):
+def make_avg_probe_pp_trajs_fig(database, probes):
     ##########################################################################
     # load data
-    probe_cf_traj_dict = trajdatabase.probe_cf_traj_dict
+    avg_probe_pp_trajs_mat = database.get_trajs_mat(probes, 'avg_probe_pp')
+    ##########################################################################
+    # choose seaborn style and palette
+    import seaborn as sns
+    sns.set_style('white')
+    palette = iter(sns.color_palette("hls", len(probes)).as_hex())
+    ##########################################################################
+    # fig settings
+    figsize = (500, 300)  # bokeh is  in pixels
+    linewidth = 2.0
+    ##########################################################################
+    # fig
+    hover = HoverTool(tooltips=[('iteration', '@x'), ('probe', '@probe'), ('perp', '@y')])
+    fig = figure(plot_width=figsize[0], plot_height=figsize[1],
+                 tools=[hover, 'pan, wheel_zoom, crosshair, save'])
+    ##########################################################################
+    # axis
+    fig.y_range = Range1d(0, 100)
+    ##########################################################################
+    # plot
+    x = database.get_xaxis()
+    for n, y in enumerate(avg_probe_pp_trajs_mat):
+        source = ColumnDataSource(data=dict(x=x, y=y, probe=[probes[n]] * len(x)))
+        fig.line(x='x', y='y', line_color=next(palette), line_width=linewidth, source=source)
+    ##########################################################################
+    return fig
+
+
+def make_cfreq_traj_fig(database, probes):
+    ##########################################################################
+    # load data
+    probe_cf_traj_dict = database.probe_cf_traj_dict
     xys = []
     for probe in probes:
-        x = trajdatabase.get_xaxis(omit_first=True)
+        x = database.get_xaxis(omit_first=True)
         y = probe_cf_traj_dict[probe][:len(x)] # y does not take iterations into account
         last_y, last_x = y[-1], x[-1]
         xys.append((x, y, last_x, last_y, probe))
     y_thr = np.max([xy[3] for xy in xys])/2
-    print 'np.max([xy[3] for xy in xys])/2'  # TODO ?
-    print np.max([xy[3] for xy in xys])/2
     ##########################################################################
     # choose seaborn style and palette
     import seaborn as sns 
@@ -814,8 +867,8 @@ def make_comp_probes_ba_fig(database, probe_tuples):
     xys = []
     for probe_class, group in groupby(probe_tuples, itemgetter(1)):
         probes = [i[0] for i in list(group)]
-        token_ba_traj_mat = database.get_token_ba_traj_mat(probes)
-        df = pd.DataFrame(token_ba_traj_mat)
+        avg_probe_ba_trajs_mat = database.get_trajs_mat(probes, 'avg_probe_ba')
+        df = pd.DataFrame(avg_probe_ba_trajs_mat)
         y, std, n = df.mean(), df.std(), len(df)
         se = std / (n ** 0.5)
         ci = se * scipy.stats.t._ppf((1 + 0.95) / 2., n - 1)
@@ -910,12 +963,13 @@ def make_ba_bds_fig(databases, palette, dotted=False, xaxis_labeled=False, grid=
     return fig
 
 
-def make_avg_ba_traj_fig(databases, palette):
+def make_probes_ba_traj_fig(databases, palette):
     ##########################################################################
     # load data
     xys = []
     for database in databases:
-        avg_token_ba_traj = database.get_avg_traj('avg_token_ba')
+        print database.model_name
+        avg_token_ba_traj = database.get_traj('probes_ba')
         x = database.get_xaxis()
         y = avg_token_ba_traj
         xys.append((x, y))
@@ -938,6 +992,7 @@ def make_avg_ba_traj_fig(databases, palette):
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.yaxis.grid(True)
     ##########################################################################
     # plot
     for (x, y) in xys:
@@ -950,12 +1005,12 @@ def make_avg_ba_traj_fig(databases, palette):
     return fig
 
 
-def make_test_pp_trajs_fig(databases, palette):
+def make_test_pp_traj_fig(databases, palette):
     ##########################################################################
-    # load x,y
+    # load data
     xys = []
     for database in databases:
-        avg_test_pp_traj = database.get_avg_traj('test_pp')
+        avg_test_pp_traj = database.get_traj('test_pp')
         x = database.get_xaxis()
         y = avg_test_pp_traj
         xys.append((x, y))
@@ -978,6 +1033,48 @@ def make_test_pp_trajs_fig(databases, palette):
     ax.tick_params(axis='both', which='both', top='off', right='off')
     ax.set_xlabel('Training Iteration', fontsize=ax_font_size)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.yaxis.grid(True)
+    ##########################################################################
+    # plot
+    for (x, y) in xys:
+        color = next(palette)
+        ax.plot(x, y, '-', linewidth=linewidth, color=color)
+    ##########################################################################
+    # layout
+    plt.tight_layout()
+    ##########################################################################
+    return fig
+
+
+def make_probe_pp_traj_fig(databases, palette):
+    ##########################################################################
+    # load data
+    xys = []
+    for database in databases:
+        avg_test_pp_traj = database.get_traj('probes_pp')
+        x = database.get_xaxis()
+        y = avg_test_pp_traj
+        xys.append((x, y))
+    ##########################################################################
+    #  seaborn
+    import seaborn as sns
+    sns.set_style('white')
+    ##########################################################################
+    # fig settings
+    figsize = (6, 3)
+    ax_font_size = 8
+    linewidth = 2.0
+    fig, ax = plt.subplots(figsize=figsize)
+    ##########################################################################
+    # axes
+    ax.set_ylim([0, np.mean(xys[0][1])])
+    ax.set_ylabel('Test Perplexity Score', fontsize=ax_font_size)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.tick_params(axis='both', which='both', top='off', right='off')
+    ax.set_xlabel('Training Iteration', fontsize=ax_font_size)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.yaxis.grid(True)
     ##########################################################################
     # plot
     for (x, y) in xys:
@@ -1093,9 +1190,9 @@ def make_cat_token_ba_comp_fig(databases, cat, max_num_probes=50, ylim=20):
     probes = database1.cat_probe_list_dict[cat]
     probe_id_dict = database1.probe_id_dict
     probe_ids = [probe_id_dict[probe] for probe in probes]
-    _, _, token_ba_list1 = database1.get_ba_breakdown_data()
-    _, _, token_ba_list2 = database2.get_ba_breakdown_data()
-    ba_diff_list_all = np.subtract(token_ba_list1, token_ba_list2)
+    _, _, avg_probe_ba_list1 = database1.get_ba_breakdown_data()
+    _, _, avg_probe_ba_list2 = database2.get_ba_breakdown_data()
+    ba_diff_list_all = np.subtract(avg_probe_ba_list1, avg_probe_ba_list2)
     ba_diff_tuples = [(ba_diff_list_all[i], probe) for i, probe in zip(probe_ids, probes)]
     ba_diff_tuples_sorted = sorted(ba_diff_tuples, key=itemgetter(0), reverse=True)[:max_num_probes]
     ba_diff_list, probes = zip(*ba_diff_tuples_sorted)  # unpack tuples
@@ -1132,18 +1229,19 @@ def make_cat_token_ba_comp_fig(databases, cat, max_num_probes=50, ylim=20):
     return fig
 
 
-def make_num_synsets_ba_diff_corr_fig(databases):
+def make_num_clusters_ba_diff_corr_fig(databases, annotate_x_thr=6):
     ##########################################################################
     # load data
     database1, database2, = databases
-    _, _, token_ba_list1 = database1.get_ba_breakdown_data()
-    _, _, token_ba_list2 = database2.get_ba_breakdown_data()
-    ba_diff_list_all = np.subtract(token_ba_list1, token_ba_list2)
-    num_lemmas_list = []
+    _, _, avg_probe_ba_list1 = database1.get_ba_breakdown_data()
+    _, _, avg_probe_ba_list2 = database2.get_ba_breakdown_data()
+    ba_diff_list_all = np.subtract(avg_probe_ba_list1, avg_probe_ba_list2)
+    num_clusters_list = []
     for probe in database1.probe_list:
-        num_lemmas = load_num_synsets(probe)
-        num_lemmas_list.append(num_lemmas)
-    x, y = num_lemmas_list, ba_diff_list_all
+        num_clusters = calc_num_probe_acts_clusters(database1, probe)
+        num_clusters_list.append(num_clusters)
+    x = num_clusters_list
+    y = ba_diff_list_all
     ##########################################################################
     # seaborn
     import seaborn as sns
@@ -1153,6 +1251,7 @@ def make_num_synsets_ba_diff_corr_fig(databases):
     figsize = (6, 6)
     markersize = 10
     ax_font_size = 8
+    leg_font_size = 8
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
     # axis
@@ -1160,11 +1259,18 @@ def make_num_synsets_ba_diff_corr_fig(databases):
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
     ax.set_ylabel('Balanced Accuracy Difference', fontsize=ax_font_size)
-    ax.set_xlabel('Number of Synsets', fontsize=ax_font_size)
+    ax.set_xlabel('Number of Probe Acts Clusters', fontsize=ax_font_size)
     ##########################################################################
     # plot
-    ax.scatter(x, y, s=markersize, facecolor='black')
-    ax.axhline(y=0, c='grey')
+    ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
+    ax.axhline(y=0, linestyle='--', c='grey', zorder=1)
+    ##########################################################################
+    # annotate
+    for x_, y_, probe in zip(x, y, database1.probe_list):
+        if x_ > annotate_x_thr:
+            txt = plt.annotate(probe, xy=(x_, y_), xytext=(2, 0), textcoords='offset points',
+                               va='bottom', fontsize=leg_font_size)
+            txt.set_path_effects([PathEffects.Stroke(linewidth=1.0, foreground="w"), PathEffects.Normal()])
     ##########################################################################
     # layout
     fig.tight_layout()
@@ -1172,13 +1278,108 @@ def make_num_synsets_ba_diff_corr_fig(databases):
     return fig
 
 
-def make_probe_freq_hist_fig(trajdatabase, probes):
+def make_probe_freq_ba_diff_corr_fig(databases, annotate_x_thr=5000):
+    ##########################################################################
+    # load data
+    database1, database2, = databases
+    _, _, avg_probe_ba_list1 = database1.get_ba_breakdown_data()
+    _, _, avg_probe_ba_list2 = database2.get_ba_breakdown_data()
+    ba_diff_list_all = np.subtract(avg_probe_ba_list1, avg_probe_ba_list2)
+    probe_freq_list = []
+    for probe in database1.probe_list:
+        probe_freq = database1.probe_cf_traj_dict[probe][-1]
+        probe_freq_list.append(probe_freq)
+    x = probe_freq_list
+    y = ba_diff_list_all
+    ##########################################################################
+    # seaborn
+    import seaborn as sns
+    sns.set_style('white')
+    ##########################################################################
+    # fig
+    figsize = (6, 6)
+    markersize = 10
+    ax_font_size = 8
+    leg_font_size = 8
+    fig, ax = plt.subplots(figsize=figsize)
+    ##########################################################################
+    # axis
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.tick_params(axis='both', which='both', top='off', right='off')
+    ax.set_ylabel('Balanced Accuracy Difference', fontsize=ax_font_size)
+    ax.set_xlabel('Probe Freq', fontsize=ax_font_size)
+    ##########################################################################
+    # plot
+    ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
+    ax.axhline(y=0, linestyle='--', c='grey', zorder=1)
+    ##########################################################################
+    # annotate
+    for x_, y_, probe in zip(x, y, database1.probe_list):
+        if x_ > annotate_x_thr:
+            txt = plt.annotate(probe, xy=(x_, y_), xytext=(2, 0), textcoords='offset points',
+                               va='bottom', fontsize=leg_font_size)
+            txt.set_path_effects([PathEffects.Stroke(linewidth=1.0, foreground="w"), PathEffects.Normal()])
+    ##########################################################################
+    # layout
+    fig.tight_layout()
+    ##########################################################################
+    return fig
+
+
+def make_avg_probe_pp_ba_diff_corr_fig(databases, annotate_x_thr=50000):
+    ##########################################################################
+    # load data
+    database1, database2, = databases
+    _, _, avg_probe_ba_list1 = database1.get_ba_breakdown_data()
+    _, _, avg_probe_ba_list2 = database2.get_ba_breakdown_data()
+    ba_diff_list_all = np.subtract(avg_probe_ba_list1, avg_probe_ba_list2)
+    avg_probe_pp_list = database1.get_avg_probe_pp_list
+    x = avg_probe_pp_list
+    y = ba_diff_list_all
+    ##########################################################################
+    # seaborn
+    import seaborn as sns
+    sns.set_style('white')
+    ##########################################################################
+    # fig
+    figsize = (6, 6)
+    markersize = 10
+    ax_font_size = 8
+    leg_font_size = 8
+    fig, ax = plt.subplots(figsize=figsize)
+    ##########################################################################
+    # axis
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.tick_params(axis='both', which='both', top='off', right='off')
+    ax.set_ylabel('Balanced Accuracy Difference', fontsize=ax_font_size)
+    ax.set_xlabel('Avg Token Perplexity', fontsize=ax_font_size)
+    ##########################################################################
+    # plot
+    ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
+    ax.axhline(y=0, linestyle='--', c='grey', zorder=1)
+    ##########################################################################
+    # annotate
+    for x_, y_, probe in zip(x, y, database1.probe_list):
+        if x_ > annotate_x_thr:
+            txt = plt.annotate(probe, xy=(x_, y_), xytext=(2, 0), textcoords='offset points',
+                               va='bottom', fontsize=leg_font_size)
+            txt.set_path_effects([PathEffects.Stroke(linewidth=1.0, foreground="w"), PathEffects.Normal()])
+    ##########################################################################
+    # layout
+    fig.tight_layout()
+    ##########################################################################
+    return fig
+
+
+def make_probe_freq_hist_fig(database, probes):
     ##########################################################################
     # load data
     xys = []
     for probe in probes:
-        x = trajdatabase.get_xaxis(omit_first=True)[1:]  # cut short because of diff
-        y = np.diff(trajdatabase.probe_cf_traj_dict[probe], 1)[:len(x)]
+        x = database.get_xaxis(omit_first=True)[1:]  # cut short because of diff
+        y = np.diff(database.probe_cf_traj_dict[probe], 1)[:len(x)]
         xys.append((x, y))
     ##########################################################################
     # seaborn
@@ -1203,7 +1404,7 @@ def make_probe_freq_hist_fig(trajdatabase, probes):
     # plot
     for (x,y) in xys:
         ax.plot(x, y, '-', linewidth=linewidth, c=next(palette),
-                label= '{} (total freq : {})'.format(probe, int(trajdatabase.probe_cf_traj_dict[probe][-1])))
+                label='{} (total freq : {})'.format(probe, int(database.probe_cf_traj_dict[probe][-1])))
     ##########################################################################
     # legend
     ax.legend(fontsize=leg_font_size, loc='best')

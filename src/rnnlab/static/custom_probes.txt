@@ -4,14 +4,8 @@ FAMILY customclust
 #
 dog freqhist
 #
-dog custompdh
-mom custompdh
-banana custompdh
-shoe custompdh
-bed custompdh
-day custompdh
-yesterday custompdh
-# 
+plant custompdh
+#
 dog customn
 mom customn
 banana customn

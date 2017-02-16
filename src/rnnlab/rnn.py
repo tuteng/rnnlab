@@ -25,7 +25,7 @@ from utils import make_rnnlab_alias
 from utils import make_tf_idf_mat
 from utils import remove_log_entry
 from utils import to_block_name
-from utils import calc_token_ba_list
+from utils import calc_avg_probe_ba_list
 
 
 
@@ -74,7 +74,7 @@ class RNN():
         self.num_hidden_units = int(self.configs_dict['num_hidden_units'])
         self.bptt_steps = int(self.configs_dict['bptt_steps'])
         self.stop_block_name = to_block_name(self.corpus.num_train_doc_ids * self.num_epochs)
-        self.avg_token_ba_list = []
+        self.probes_ba_list = []
 
 
     def train(self):
@@ -122,35 +122,39 @@ class RNN():
         ##########################################################################
         # analyze acts
         database = DataBase(self.configs_dict, df, block_name)
-        test_pp, avg_token_ba, token_ba_list = self.analyze(database)
+        analysis_list = self.make_analysis_list(database)
         ##########################################################################
         # save to disk
-        database.save_to_disk(block_name, test_pp, avg_token_ba, token_ba_list)
+        database.save_to_disk(block_name, *analysis_list)
         #########################################################################
         # print to console
-        print 'Test perplexity : {} |Avg token ba : {} |Database ops completed in {} secs'.format(
-            test_pp, avg_token_ba, int(abs(time.time() - start)))
-        self.avg_token_ba_list.append(avg_token_ba)
+        print 'test_pp : {} |probes_ba : {} |Database ops completed in {} secs'.format(
+            analysis_list[0], analysis_list[3], int(abs(time.time() - start)))
+        self.probes_ba_list.append(analysis_list[3])
         #########################################################################
-        # update log with best_avg_token_ba and completed
-        best_avg_token_ba = max(self.avg_token_ba_list)
+        # update log with best_probes_ba and completed
+        best_probes_ba = max(self.probes_ba_list)
         completed = 1 if self.stop_block_name == block_name else 0
-        self.update_log(best_avg_token_ba, completed)
+        self.update_log(best_probes_ba, completed)
 
-    def analyze(self, database):
+    def make_analysis_list(self, database):
         ##########################################################################
-        # calc token_ba_list
+        # ba
         if int(database.block_name) == 0:
             num_ba_samples = None
         else:
-            num_ba_samples = int(load_rnnlabrc('num_ba_samples'))
-        token_ba_list = calc_token_ba_list(database, num_samples=num_ba_samples)
-        avg_token_ba = np.mean(token_ba_list)
+            num_ba_samples = load_rnnlabrc('num_ba_samples')
+        avg_probe_ba_list = calc_avg_probe_ba_list(database, num_ba_samples=num_ba_samples)
+        probes_ba = np.mean(avg_probe_ba_list)
         ##########################################################################
-        # calc test perplexity
+        # test_pp
         test_pp = self.calc_test_pp()
         ##########################################################################
-        return test_pp, avg_token_ba, token_ba_list
+        # pp
+        avg_probe_pp_list = database.get_avg_probe_pp_list()
+        probes_pp = np.mean(avg_probe_pp_list)
+        ##########################################################################
+        return [test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list]
 
 
 
@@ -339,7 +343,7 @@ class RNN():
         pbar = pyprind.ProgBar(self.corpus.num_train_doc_ids)
         acts_mat_list = []
         tokens_in_mb = []
-        mb_data_dict_keys = ['X', 'doc_name', 'probe', 'probe_id', 'Y', 'cat', 'token_pp']
+        mb_data_dict_keys = ['X', 'doc_name', 'probe', 'probe_id', 'Y', 'cat', 'probe_pp']
         mb_data_dict = {key: [] for key in mb_data_dict_keys}
         probe_X = np.zeros((mbsize, self.bptt_steps), dtype=int)
         probe_Y = np.zeros(mbsize, dtype=int)
@@ -357,7 +361,8 @@ class RNN():
                     if token in self.corpus.probe_id_dict and token not in tokens_in_mb:
                         if fast:
                             tokens_in_mb.append(token)
-                        mb_data_dict['X'].append(X[n]) # this is a list of token_ids in bptt window
+                        mb_data_dict['X'].append(
+                            X[n])  # this is a list of token_ids in bptt window # TODO do stats with this
                         mb_data_dict['doc_name'].append(int(block_name))
                         mb_data_dict['probe'].append(token)
                         mb_data_dict['probe_id'].append(self.corpus.probe_id_dict[token])
@@ -376,7 +381,7 @@ class RNN():
                             [self.rnn_graph.last_hidden_state, self.rnn_graph.pp_vec],
                             feed_dict={self.rnn_graph.x: probe_X, self.rnn_graph.y: probe_Y})
                         acts_mat_list.append(acts_mat)
-                        mb_data_dict['token_pp'] += pp_vec.tolist()
+                        mb_data_dict['probe_pp'] += pp_vec.tolist()
                         ##########################################################################
                         # reset batch
                         tokens_in_mb = []
@@ -388,7 +393,7 @@ class RNN():
         acts_for_df = np.vstack((mat for mat in acts_mat_list))
         acts_for_df_labels = ['H{}'.format(i) for i in range(self.num_hidden_units)]
         df = pd.DataFrame(acts_for_df, columns=acts_for_df_labels)
-        num_data = len(mb_data_dict['token_pp'])
+        num_data = len(mb_data_dict['probe_pp'])
         for df_column_label in mb_data_dict_keys:
             if 'X' == df_column_label:
                for n, row in enumerate(np.asarray(mb_data_dict['X'][:num_data]).T):

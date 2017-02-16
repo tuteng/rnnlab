@@ -24,8 +24,8 @@ from utils import get_block_name_from_request
 from figs import make_neighbors_rbo_fig
 from figs import make_custom_neighbors_table_fig
 from figs import make_ba_bds_fig
-from figs import make_avg_ba_traj_fig
-from figs import make_test_pp_trajs_fig
+from figs import make_probes_ba_traj_fig
+from figs import make_test_pp_traj_fig
 from figs import make_probe_sim_comp_fig
 from figs import make_probe_freq_hist_fig
 from figs import make_cat_count_pie_chart_fig
@@ -35,27 +35,31 @@ from figs import make_ba_breakdown_fig
 from figs import make_cat_sim_dh_fig
 from figs import make_neighbors_table_fig
 from figs import make_cat_cluster_fig
-from figs import make_token_ba_trajs_fig
+from figs import make_avg_probe_ba_trajs_fig
 from figs import make_cfreq_traj_fig
 from figs import make_cat_confusion_mat_fig
 from figs import make_corpus_traj_fig
 from figs import make_comp_probes_ba_fig
 from figs import make_acts_dh_fig
-from figs import make_token_acts_sim_hist_fig
+from figs import make_token_acts_avg_act_corr_fig
 from figs import make_acts_2d_fig
 from figs import make_custom_cat_clust_fig
 from figs import make_cat_conf_diff_fig
 from figs import make_comp_binned_freqs_fig
 from figs import make_cat_token_ba_comp_fig
-from figs import make_num_synsets_ba_diff_corr_fig
+from figs import make_num_clusters_ba_diff_corr_fig
 from figs import make_pairplot_fig
+from figs import make_probe_freq_ba_diff_corr_fig
+from figs import make_avg_probe_pp_ba_diff_corr_fig
+from figs import make_avg_probe_pp_trajs_fig
+from figs import make_probe_pp_traj_fig
 
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
 app = Flask(__name__)
 
 btn_names_top = ['avgtrajBtn', 'dimredBtn', 'catsimBtn', 'bdBtn',
-                 'clustBtn', 'neighborsBtn', 'batrajBtn', 'catconfBtn']
+                 'clustBtn', 'neighborsBtn', 'trajBtn', 'catconfBtn']
 
 btn_names_bottom = ['compprobes', 'customn', 'custompdh', 'freqhist',
                     'customclust', 'delete', 'complete']
@@ -159,10 +163,11 @@ def model(model_name1):
         database = load_database(model_name1)
         num_comparisons = 1
         palette = cycle(Category10[max(3, num_comparisons)][:num_comparisons])
-        fig_tuple1 = (make_avg_ba_traj_fig([database], palette), 'mpl')
-        fig_tuple2 = (make_test_pp_trajs_fig([database], palette), 'mpl')
-        fig_tuple3 = (make_ba_pp_window_corr_fig(database), 'mpl')
-        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
+        fig_tuple1 = (make_probes_ba_traj_fig([database], palette), 'mpl')
+        fig_tuple2 = (make_test_pp_traj_fig([database], palette), 'mpl')
+        fig_tuple3 = (make_probe_pp_traj_fig([database], palette), 'mpl')
+        fig_tuple4 = (make_ba_pp_window_corr_fig(database), 'mpl')
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4)
     ##########################################################################
     elif request.args.get('dimredBtn') not in ['traj', None]:
         block_name1 = request.args.get('dimredBtn')
@@ -205,15 +210,20 @@ def model(model_name1):
             fig_tuples.append((make_neighbors_table_fig(database, cat), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
-    elif request.args.get('batrajBtn') == 'traj':
+    elif request.args.get('trajBtn') == 'traj':
         imgs_desc = 'Token Balanced Accuracy Trajectories'
         database = load_database(model_name1)
-        fig_tuples = []
-        for cat in database.cat_list:
-            cat_probes = database.cat_probe_list_dict[cat]
-            fig_tuples.append((make_token_ba_trajs_fig(database, cat_probes), 'bokeh'))
-            fig_tuples.append((make_cfreq_traj_fig(database, cat_probes), 'mpl'))
-        imgs = make_imgs(*fig_tuples)
+        if len(database.get_xaxis(omit_first=True)) > 0:
+            fig_tuples = []
+            for cat in database.cat_list:
+                cat_probes = database.cat_probe_list_dict[cat]
+                fig_tuples.append((make_avg_probe_ba_trajs_fig(database, cat_probes), 'bokeh'))
+                fig_tuples.append((make_avg_probe_pp_trajs_fig(database, cat_probes), 'bokeh'))
+                fig_tuples.append((make_cfreq_traj_fig(database, cat_probes), 'mpl'))
+            imgs = make_imgs(*fig_tuples)
+        else:
+            imgs = None
+            imgs_desc = 'No Trajectory Data available yet'
     ##########################################################################
     elif request.args.get('catconfBtn') not in ['traj', None]:
         block_name1 = request.args.get('catconfBtn')
@@ -231,7 +241,8 @@ def model(model_name1):
         fig_tuples = []
         for custom_probe in custom_tuples:
             fig_tuples.append((make_acts_dh_fig(database, custom_probe), 'mpl'))
-            fig_tuples.append((make_token_acts_sim_hist_fig(database, custom_probe), 'mpl'))
+            databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
+            fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, custom_probe), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('comp2models') not in ['traj', None]:
@@ -239,25 +250,30 @@ def model(model_name1):
         block_name1_id = int(comp2models_request[0])
         block_name1 = block_names1[block_name1_id]
         model_name2, block_name2 = comp2models_request[1], comp2models_request[2]
-        databases = [load_database(model_name1, block_name1), load_database(model_name2, block_name2)]
+        database1 = load_database(model_name1, block_name1)
+        database2 = load_database(model_name2, block_name2)
+        databases = [database1, database2]
         iteration = block_to_iteration(model_name1, block_name1)
         imgs_desc = 'Model Comparison Iteration {}'.format(iteration)
         num_comparisons = 2
         palette = cycle(Category10[max(3,num_comparisons)][:num_comparisons])
         fig_tuple1 = (make_ba_bds_fig(databases, palette), 'mpl')
-        fig_tuple2 = (make_avg_ba_traj_fig(databases, palette), 'mpl')
-        fig_tuple3 = (make_test_pp_trajs_fig(databases, palette), 'mpl')
+        fig_tuple2 = (make_probes_ba_traj_fig(databases, palette), 'mpl')
+        fig_tuple3 = (make_test_pp_traj_fig(databases, palette), 'mpl')
         fig_tuple4 = (make_probe_sim_comp_fig(databases, palette), 'mpl')
         custom_probes_tuples = load_custom_probes_tuples()
         custom_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customn']
         fig_tuple5 = (make_neighbors_rbo_fig(databases, custom_probes), 'bokeh')
         fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
-        fig_tuple7 = (make_num_synsets_ba_diff_corr_fig(databases), 'mpl')  # TODO
+        fig_tuple7 = (make_num_clusters_ba_diff_corr_fig(databases), 'mpl')
+        fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(databases), 'mpl')
+        fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(databases), 'mpl')
         fig_tuples = []
         for cat in database.cat_list:
             fig_tuples.append((make_cat_token_ba_comp_fig(databases, cat), 'mpl'))
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3,
-                         fig_tuple4, fig_tuple5, fig_tuple6, fig_tuple7, *fig_tuples)
+                         fig_tuple4, fig_tuple5, fig_tuple6, fig_tuple7,
+                         fig_tuple8, fig_tuple9, *fig_tuples)
     ##########################################################################
     elif request.args.get('compprobes') == 'traj':
         imgs_desc = 'Probe Comparison'
