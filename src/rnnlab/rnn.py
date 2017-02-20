@@ -13,6 +13,7 @@ import tensorflow as tf
 
 from corpus import Corpus
 from database import DataBase
+from database import load_corpus_data
 
 from utils import create_rnn_graph
 from utils import check_disk_space
@@ -25,7 +26,8 @@ from utils import make_rnnlab_alias
 from utils import make_tf_idf_mat
 from utils import remove_log_entry
 from utils import to_block_name
-from utils import calc_avg_probe_ba_list
+from utils import calc_ba_list
+from utils import calc_probe_sim_mat
 
 
 
@@ -58,8 +60,8 @@ class RNN():
         ##########################################################################
         # make corpus
         corpus_kwargs = {key : self.configs_dict[key]
-                       for key in ['corpus_name', 'vocab_file_name', 'freq_cutoff',
-                                   'probes_name', 'save_ev','block_order']}
+                         for key in ['corpus_name', 'vocab_file_name', 'freq_cutoff',
+                                     'probes_name', 'mb_size', 'bptt_steps', 'block_order']}
         corpus_kwargs['num_epochs'] = self.num_epochs
         self.corpus = Corpus(**corpus_kwargs)
         ##########################################################################
@@ -74,6 +76,7 @@ class RNN():
         self.num_hidden_units = int(self.configs_dict['num_hidden_units'])
         self.bptt_steps = int(self.configs_dict['bptt_steps'])
         self.stop_block_name = to_block_name(self.corpus.num_train_doc_ids * self.num_epochs)
+        self.num_ba_samples = int(self.configs_dict['num_ba_samples'])
         self.probes_ba_list = []
 
 
@@ -110,6 +113,7 @@ class RNN():
         # at end of training, close session and upload data
         self.complete_training()
 
+
     def data_step(self, block_name):
         ##########################################################################
         start = time.time()
@@ -119,6 +123,7 @@ class RNN():
         ##########################################################################
         # extract acts
         df = self.make_df()
+        df = df.sample(frac=1).reset_index(drop=True)  # shuffle to reduce order effects when sampling during ba
         ##########################################################################
         # analyze acts
         database = DataBase(self.configs_dict, df, block_name)
@@ -137,25 +142,31 @@ class RNN():
         completed = 1 if self.stop_block_name == block_name else 0
         self.update_log(best_probes_ba, completed)
 
+
     def make_analysis_list(self, database):
         ##########################################################################
         # ba
-        if int(database.block_name) == 0:
-            num_ba_samples = None
-        else:
-            num_ba_samples = load_rnnlabrc('num_ba_samples')
-        avg_probe_ba_list = calc_avg_probe_ba_list(database, num_ba_samples=num_ba_samples)
+        probe_ba_list, avg_probe_ba_list, sampled_probes_list = calc_ba_list(database, self.num_ba_samples)
         probes_ba = np.mean(avg_probe_ba_list)
+        helper_tuple = zip(probe_ba_list, sampled_probes_list)
+        df_probe_ba_col = np.zeros(len(database.df))
+        df_probe_ba_col.fill(np.nan)
+        for probe, group in groupby(helper_tuple, key=itemgetter(1)):
+            probe_bas = list(tuple[0] for tuple in group)
+            num_probe_bas = len(probe_bas)
+            df_probe_ids = database.df[database.df['probe'] == probe].index.tolist()
+            df_probe_ids_sized = df_probe_ids[:num_probe_bas]
+            df_probe_ba_col[df_probe_ids_sized] = probe_bas
+        database.df['probe_ba'] = df_probe_ba_col
         ##########################################################################
         # test_pp
         test_pp = self.calc_test_pp()
         ##########################################################################
         # pp
-        avg_probe_pp_list = database.get_avg_probe_pp_list()
+        avg_probe_pp_list = database.df[['probe', 'probe_pp']].groupby('probe').mean()['probe_pp'].values.tolist()
         probes_pp = np.mean(avg_probe_pp_list)
         ##########################################################################
         return [test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list]
-
 
 
     def save_ckpt(self, block_name):
@@ -200,7 +211,7 @@ class RNN():
                  cat_probe_list_dict=self.corpus.cat_probe_list_dict)
         ##########################################################################
         # make corpus data
-        probe_cf_traj_dict = make_probe_cf_traj_dict(self.corpus, self.save_ev_block)
+        probe_cf_traj_dict, num_probe_occurences = make_probe_cf_traj_dict(self.corpus, self.save_ev_block)
         tf_idf_mat = make_tf_idf_mat(self.corpus, self.save_ev_block)
         lex_div_traj = make_lex_div_traj(self.corpus, self.save_ev_block)
         num_input_units = len(self.corpus.token_list)
@@ -213,7 +224,8 @@ class RNN():
                  num_train_doc_ids=self.corpus.num_train_doc_ids,
                  tf_idf_mat=tf_idf_mat,
                  lex_div_traj=lex_div_traj,
-                 num_input_units=num_input_units)
+                 num_input_units=num_input_units,
+                 num_probe_occurences=num_probe_occurences)
         ##########################################################################
         #  save configs_dict to npy
         path = os.path.join(self.runs_dir, self.model_name, 'Configs')
@@ -276,7 +288,7 @@ class RNN():
             header = [str(key) for key in configs_dict.keys()]
             header.insert(0, 'model_name')
             header.append('completed')
-            header.append('best_token_ba')
+            header.append('best_probes_ba')
             writer = csv.writer(open(self.log_path, 'w'))
             writer.writerow(header)
             print 'Creating rnnlab_log.csv'
@@ -334,35 +346,33 @@ class RNN():
         tf.reset_default_graph()
         print '{} Training Session Closed and Graph reset\n\n'.format(self.model_name)
 
-
-    def make_df(self, fast=True, mbsize=128):
+    def make_df(self):
         ##########################################################################
         print 'Extracting activations for probes...'
         ##########################################################################
         # inits
         pbar = pyprind.ProgBar(self.corpus.num_train_doc_ids)
+        num_tokens_seen = 0
         acts_mat_list = []
         tokens_in_mb = []
         mb_data_dict_keys = ['X', 'doc_name', 'probe', 'probe_id', 'Y', 'cat', 'probe_pp']
         mb_data_dict = {key: [] for key in mb_data_dict_keys}
-        probe_X = np.zeros((mbsize, self.bptt_steps), dtype=int)
-        probe_Y = np.zeros(mbsize, dtype=int)
+        probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
+        probe_Y = np.zeros(self.mb_size, dtype=int)
         num_tokens_in_batch = 0
         probe_freq_dict = {probe: 0 for probe in self.corpus.probe_list}
         ##########################################################################
         # get mb_data_dict from each block_name and add to df
         for block_name, block_id in self.corpus.gen_train_block_name_and_id(1, 'chronological'):
             pbar.update()
-            for (X, Y) in self.corpus.gen_batch(mbsize, self.bptt_steps, block_id):
+            num_tokens_seen += self.corpus.num_mbs_in_doc * self.mb_size
+            for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
                 tokens = [self.corpus.token_list[token_id] for token_id in X[:, -1]]
                 for n, token in enumerate(tokens):
                     ##########################################################################
                     # if token is probe, add data to mb_data_dict
                     if token in self.corpus.probe_id_dict and token not in tokens_in_mb:
-                        if fast:
-                            tokens_in_mb.append(token)
-                        mb_data_dict['X'].append(
-                            X[n])  # this is a list of token_ids in bptt window # TODO do stats with this
+                        mb_data_dict['X'].append(X[n])  # list oftoken_ids in bptt window # TODO do stats with this
                         mb_data_dict['doc_name'].append(int(block_name))
                         mb_data_dict['probe'].append(token)
                         mb_data_dict['probe_id'].append(self.corpus.probe_id_dict[token])
@@ -376,7 +386,7 @@ class RNN():
                         probe_freq_dict[token] += 1.0
                     ##########################################################################
                     # when batch ready, calculate acts_mat and pp_vec
-                    if num_tokens_in_batch == mbsize:
+                    if num_tokens_in_batch == self.mb_size:
                         [acts_mat, pp_vec] = self.rnn_graph.sess.run(
                             [self.rnn_graph.last_hidden_state, self.rnn_graph.pp_vec],
                             feed_dict={self.rnn_graph.x: probe_X, self.rnn_graph.y: probe_Y})
@@ -386,20 +396,24 @@ class RNN():
                         # reset batch
                         tokens_in_mb = []
                         num_tokens_in_batch = 0
-                        probe_X = np.zeros((mbsize, self.bptt_steps), dtype=int)
-                        probe_Y = np.zeros(mbsize, dtype=int)
+                        probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
+                        probe_Y = np.zeros(self.mb_size, dtype=int)
         ##########################################################################
         # make df
         acts_for_df = np.vstack((mat for mat in acts_mat_list))
         acts_for_df_labels = ['H{}'.format(i) for i in range(self.num_hidden_units)]
         df = pd.DataFrame(acts_for_df, columns=acts_for_df_labels)
-        num_data = len(mb_data_dict['probe_pp'])
+        num_probe_occs_found = len(mb_data_dict['probe_pp'])
         for df_column_label in mb_data_dict_keys:
             if 'X' == df_column_label:
-               for n, row in enumerate(np.asarray(mb_data_dict['X'][:num_data]).T):
+                for n, row in enumerate(np.asarray(mb_data_dict['X'][:num_probe_occs_found]).T):
                    df['X{}'.format(n)] = row
             else:
-                df[df_column_label] = mb_data_dict[df_column_label][:num_data]
+                df[df_column_label] = mb_data_dict[df_column_label][:num_probe_occs_found]
+        ##########################################################################
+        num_probe_occs = load_corpus_data(self.model_name, 'num_probe_occurences')
+        missed_probe_occs = num_probe_occs - num_probe_occs_found
+        print 'Number of missed probe occurences (due to windowing): {}'.format(missed_probe_occs)
         ##########################################################################
         return df
 
@@ -449,6 +463,7 @@ class RNN():
             'block_order': 'chronological',
             'optimizer': 'adagrad',
             'save_ev': 100,
+            'num_ba_samples': 0,
             'model_name': self.make_model_name(flavor),
             'flavor': flavor,
             'corpus_name': None,

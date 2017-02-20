@@ -53,6 +53,8 @@ from figs import make_probe_freq_ba_diff_corr_fig
 from figs import make_avg_probe_pp_ba_diff_corr_fig
 from figs import make_avg_probe_pp_trajs_fig
 from figs import make_probe_pp_traj_fig
+from figs import make_ba_vs_pp_fig
+from figs import make_probe_ba_vs_pp_fig
 
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
@@ -64,8 +66,8 @@ btn_names_top = ['avgtrajBtn', 'dimredBtn', 'catsimBtn', 'bdBtn',
 btn_names_bottom = ['compprobes', 'customn', 'custompdh', 'freqhist',
                     'customclust', 'delete', 'complete']
 
-headers_to_display = ['model_name', 'block_order',
-                      'num_reps', 'num_iterations', 'completed', 'best_token_ba']
+headers_to_display = ['model_name', 'block_order', 'num_ba_samples',
+                      'bptt_steps', 'completed', 'best_probes_ba']
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -189,8 +191,9 @@ def model(model_name1):
         database = load_database(model_name1, block_name1)
         fig_tuple1 = (make_ba_breakdown_annotated_fig(database), 'mpl')
         fig_tuple2 = (make_ba_breakdown_fig(database), 'mpl')
-        fig_tuple3 = (make_pairplot_fig(database), 'mpl')
-        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
+        fig_tuple3 = (make_ba_vs_pp_fig(database), 'mpl')
+        fig_tuple4 = (make_pairplot_fig(database), 'mpl')
+        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4)
     ##########################################################################
     elif request.args.get('clustBtn') not in ['traj', None]:
         block_name1 = request.args.get('clustBtn')
@@ -211,19 +214,15 @@ def model(model_name1):
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('trajBtn') == 'traj':
-        imgs_desc = 'Token Balanced Accuracy Trajectories'
+        imgs_desc = 'Token Balanced Accuracy & Perplexity Trajectories'
         database = load_database(model_name1)
-        if len(database.get_xaxis(omit_first=True)) > 0:
-            fig_tuples = []
-            for cat in database.cat_list:
-                cat_probes = database.cat_probe_list_dict[cat]
-                fig_tuples.append((make_avg_probe_ba_trajs_fig(database, cat_probes), 'bokeh'))
-                fig_tuples.append((make_avg_probe_pp_trajs_fig(database, cat_probes), 'bokeh'))
-                fig_tuples.append((make_cfreq_traj_fig(database, cat_probes), 'mpl'))
-            imgs = make_imgs(*fig_tuples)
-        else:
-            imgs = None
-            imgs_desc = 'No Trajectory Data available yet'
+        fig_tuples = []
+        for cat in database.cat_list:
+            cat_probes = database.cat_probe_list_dict[cat]
+            fig_tuples.append((make_avg_probe_ba_trajs_fig(database, cat_probes), 'bokeh'))
+            fig_tuples.append((make_avg_probe_pp_trajs_fig(database, cat_probes), 'bokeh'))
+            fig_tuples.append((make_cfreq_traj_fig(database, cat_probes), 'mpl'))
+        imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('catconfBtn') not in ['traj', None]:
         block_name1 = request.args.get('catconfBtn')
@@ -241,8 +240,9 @@ def model(model_name1):
         fig_tuples = []
         for custom_probe in custom_tuples:
             fig_tuples.append((make_acts_dh_fig(database, custom_probe), 'mpl'))
-            databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
-            fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, custom_probe), 'mpl'))
+            # databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
+            # fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, custom_probe), 'mpl'))
+            fig_tuples.append((make_probe_ba_vs_pp_fig(database, custom_probe), 'mpl'))  # TODO make this work
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('comp2models') not in ['traj', None]:
@@ -302,7 +302,7 @@ def model(model_name1):
         freqhist_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'freqhist']
         fig_tuple1 = (make_probe_freq_hist_fig(database, freqhist_probes), 'mpl')
         fig_tuple2 = (make_cat_count_pie_chart_fig(database), 'mpl')
-        fig_tuple3 = (make_corpus_traj_fig(database), 'bokeh')  # TODO make this work
+        fig_tuple3 = (make_corpus_traj_fig(database), 'bokeh')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
     ##########################################################################
     elif request.args.get('customclust') not in ['traj', None]:

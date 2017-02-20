@@ -43,6 +43,7 @@ class DataBase:
         self.lex_div_traj = load_corpus_data(self.model_name, 'lex_div_traj')
         self.num_input_units = load_corpus_data(self.model_name, 'num_input_units')
 
+
     def save_to_disk(self, block_name, test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list):
         ##########################################################################
         # ad to pp database
@@ -82,8 +83,7 @@ class DataBase:
         ##########################################################################
         return saved_block_names
 
-
-    def get_ba_breakdown_data(self):  # TODO this needs to be modified to retrieve non-averaged ba
+    def get_ba_breakdown_data(self):  # TODO split this into separate methods each retrieving a single result
         ##########################################################################
         # make df_cat_and_ba
         df_cat_ba = self.df[['cat', 'probe', 'avg_probe_ba']].drop_duplicates().groupby('cat', sort=False).mean()
@@ -97,24 +97,62 @@ class DataBase:
         cat_ba_dict = df_cat_ba.to_dict()['avg_probe_ba']
         ##########################################################################
         # make avg_probe_ba_list
-        avg_probe_ba_list = self.df[['probe', 'avg_probe_ba']].groupby('probe').first()['avg_probe_ba'].values.tolist()
+        avg_probe_ba_list = self.get_avg_probe_ba_list()
         ##########################################################################
         return cats_sorted_by_ba, cat_ba_dict, avg_probe_ba_list
 
-    def get_avg_probe_pp_list(self):
+    def get_avg_probe_pp_list(self, clip=True):
         ##########################################################################
-        df_probe_pp = self.df[['probe', 'probe_pp']].groupby('probe').mean()
-        avg_probe_pp_list = df_probe_pp.values.flatten().tolist()
+        avg_probe_pp_list = self.df[['probe', 'avg_probe_pp']].groupby(
+            'probe').first()['avg_probe_pp'].values.tolist()
+        if clip: avg_probe_pp_list = np.clip(avg_probe_pp_list, 1, self.num_input_units)
         ##########################################################################
         return avg_probe_pp_list
 
-    def get_avg_probe_pp(self, probe_to_query):
+    def get_avg_probe_ba_list(self):
+        ##########################################################################
+        avg_probe_ba_list = self.df[['probe', 'avg_probe_ba']].groupby(
+            'probe').first()['avg_probe_ba'].values.tolist()
+        ##########################################################################
+        return avg_probe_ba_list
+
+    def get_avg_probe_pp(self, probe_to_query, clip=True):
         ##########################################################################
         probe_to_query = probe_to_query
-        token_ids = self.df.query("probe == @probe_to_query").index.tolist()
-        avg_probe_pp = self.df.loc[token_ids]['probe_pp'].mean()
+        row_ids = self.df.query("probe == @probe_to_query").index.tolist()
+        avg_probe_pp = self.df.loc[row_ids]['probe_pp'].mean()
+        if clip: avg_probe_pp = np.clip(avg_probe_pp, 1, self.num_input_units)
         ##########################################################################
         return avg_probe_pp
+
+    def get_avg_probe_ba(self, probe_to_query):
+        ##########################################################################
+        probe_to_query = probe_to_query
+        row_ids = self.df.query("probe == @probe_to_query").index.tolist()
+        avg_probe_ba = self.df.loc[row_ids]['probe_ba'].mean()
+        ##########################################################################
+        return avg_probe_ba
+
+    def get_probe_ba_list(self, probe_to_query):  # TODO get only maximum of num_ba_samples
+        ##########################################################################
+        probe_to_query = probe_to_query
+
+        print self.df[['probe', 'probe_ba']].dropna()
+
+        row_ids = self.df.query("probe == @probe_to_query").index.tolist()
+        probe_ba_list = self.df.loc[row_ids]['probe_ba'].values.tolist()
+        ##########################################################################
+        return probe_ba_list
+
+    def get_probe_pp_list(self, probe_to_query, clip=True):
+        ##########################################################################
+        probe_to_query = probe_to_query
+        row_ids = self.df.query("probe == @probe_to_query").index.tolist()
+        probe_pp_list = self.df.loc[row_ids]['probe_pp'].values.tolist()
+        if clip: probe_pp_list = np.clip(probe_pp_list, 1, self.num_input_units)
+        ##########################################################################
+        return probe_pp_list
+
 
     def get_traj(self, which_traj):
         ##########################################################################
@@ -131,6 +169,7 @@ class DataBase:
             raise NotImplementedError
         ##########################################################################
         return avg_traj
+
 
     def get_trajs_mat(self, probes_to_query, which_traj):
         ##########################################################################
@@ -149,8 +188,7 @@ class DataBase:
         ##########################################################################
         return avg_trajs_mat
 
-
-    def get_token_acts_df(self, probe_to_query):
+    def get_probe_acts_df(self, probe_to_query):
         ##########################################################################
         probe_to_query = probe_to_query
         token_ids = self.df.query("probe == @probe_to_query").index.tolist()
@@ -167,39 +205,51 @@ class DataBase:
         ##########################################################################
         return cat_acts_df
 
-
-    def get_all_acts_df(self, num_samples):
+    def get_cat_prototypes_df(self, method='weighted'):
         ##########################################################################
-        if num_samples is not None:
+        if method == 'weighted':
+            cat_prototypes_df = self.df.groupby('cat', sort=True).mean().filter(regex='H')
+        elif method == 'unweighted':
+            tmp_df = self.df.groupby('probe', sort=True).mean().reset_index()
+            tmp_df['cat'] = tmp_df['probe'].apply(lambda probe: self.probe_cat_dict[probe])
+            cat_prototypes_df = tmp_df.groupby('cat').mean().filter(regex='H')
+        else:
+            raise AttributeError('rnnlab: method argument is either "weighted" or "unweighted".')
+        ##########################################################################
+        return cat_prototypes_df
+
+    def get_probes_acts_df(self, num_ba_samples):
+        ##########################################################################
+        if num_ba_samples != 0:
             ##########################################################################
-            print 'Sampling {} probe activations to use in balanced accuracy...'.format(num_samples)
+            print 'Using first {} probe activations to calc balanced accuracy...'.format(num_ba_samples)
             ##########################################################################
-            all_acts_labels, acts_mat_list = [], []
+            # make probes_acts_df
+            sampled_probes_list, acts_mat_list = [], []
             for probe in self.probe_list:
-                probe_acts_mat = self.df[self.df['probe'] == probe].sample(
-                    num_samples, replace=True).filter(
-                    regex='H').values  # TODO set replace to False, but prevent this from being a problem
-                assert probe_acts_mat.shape == (num_samples, self.configs_dict['num_hidden_units'])
+                probe_acts_candidates_df = self.df[self.df['probe'] == probe]
+                num_probe_acts = len(probe_acts_candidates_df)
+                if num_probe_acts > num_ba_samples:
+                    probe_acts_mat = probe_acts_candidates_df.head(num_ba_samples).filter(regex='H').values
+                else:
+                    probe_acts_mat = probe_acts_candidates_df.head(num_probe_acts).filter(regex='H').values
                 acts_mat_list.append(probe_acts_mat)
-                all_acts_labels += [probe] * len(probe_acts_mat)
+                sampled_probes_list += [probe] * len(probe_acts_mat)
             all_acts_mat = np.vstack((mat for mat in acts_mat_list))
-            all_acts_df = pd.DataFrame(all_acts_mat)
+            probes_acts_df = pd.DataFrame(data=all_acts_mat, index=sampled_probes_list)
         else:
             ##########################################################################
             print 'Collapsing all probe activtions to calculate balanced accuracy...'
             ##########################################################################
-            all_acts_df = self.df.groupby('probe', sort=True).mean().filter(regex='H')
-            all_acts_labels = self.probe_list
+            probes_acts_df = self.df.groupby('probe', sort=True).mean().filter(regex='H')
         ##########################################################################
-        return all_acts_df, all_acts_labels
+        return probes_acts_df
 
-
-    def get_xaxis(self, omit_first=False):
+    def get_train_iterations_axis(self):
         ##########################################################################
         with pd.HDFStore(self.ba_trajdf_path, mode='r') as store:
             saved_block_names = store.select_column('trajdf', 'index').values
         xaxis = map(lambda x: int(x) * self.num_iterations, [i for i in saved_block_names])
-        if omit_first: xaxis = xaxis[1:]
         ##########################################################################
         return xaxis
 
@@ -275,9 +325,10 @@ def load_rnnlabrc(string):
             if line.startswith(string):
                 rc = line.split()[1]
     if rc is None:
-        sys.exit('rnnlab: Did not find "{}" in .rnnlabrc'.format(string))
+        raise AttributeError('rnnlab: Did not find "{}" in .rnnlabrc'.format(string))
 
     if rc == 'None': rc = None
-    if rc.isdigit(): rc = int(rc)
+    elif rc.isdigit():
+        rc = int(rc)
     ##########################################################################
     return rc

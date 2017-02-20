@@ -1,6 +1,5 @@
 import os
 import csv
-import random
 import time
 import multiprocessing as mp
 import shutil
@@ -13,12 +12,12 @@ import pandas as pd
 import numpy as np
 from bokeh.embed import components
 from sklearn.feature_extraction.text import TfidfVectorizer
-import tensorflow as tf
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import linkage
 
 
 from database import DataBase
+from database import load_corpus_data
 from database import load_rnnlabrc
 
 
@@ -42,7 +41,8 @@ def gen_user_configs():
     ##########################################################################
     # define directories
     user_configs_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_user_configs.csv'))
-    if not os.path.isfile(user_configs_path): sys.exit('rnnlab: {} not found'.format(user_configs_path))
+    if not os.path.isfile(user_configs_path):
+        raise AttributeError('rnnlab: {} not found'.format(user_configs_path))
     ##########################################################################
     # check that there are no duplicated configs
     reader = csv.reader(open(user_configs_path, 'r'))
@@ -129,7 +129,7 @@ def check_disk_space():
     print 'Checking disk space of filesystem containing runs_dir:'
     print df_str
     ##########################################################################
-    if used > 90: sys.exit('rnnlab: Disk space usage > 90%')
+    if used > 90: sys.exit('rnnlab: Disk space usage > 90%.')
 
 
 def write_to_bashrc(bashrc, alias):
@@ -284,11 +284,35 @@ def load_filtered_log_entries(headers_to_display, allow_incomplete=True):
     return filtered_log_entries, filtered_headers
 
 
-def make_block_names1(database, step=7):
+def make_block_names1(database, num_blocks=5):
     ##########################################################################
-    block_names_to_display = database.get_saved_block_names()[0::step]
+    # inits
+    saved_block_names = database.get_saved_block_names()
+    saved_blocks = [int(block_name) for block_name in saved_block_names]
+    num_train_doc_ids = load_corpus_data(database.model_name, 'num_train_doc_ids')
+    num_reps = int(load_configs_dict(database.model_name)['num_reps'])
+    num_iterations = int(load_configs_dict(database.model_name)['num_iterations'])
+    save_ev = int(load_configs_dict(database.model_name)['save_ev'])
+    num_epochs = num_reps / num_iterations
+    stop_block = num_train_doc_ids * num_epochs
+    save_ev_block = save_ev * num_epochs
     ##########################################################################
-    return block_names_to_display
+    # make candidates
+    block_names1_candidates = [stop_block - (n * save_ev_block) for n in range(stop_block / save_ev_block + 1)]
+    while not len(block_names1_candidates) % num_blocks == 0:
+        block_names1_candidates.pop()
+    ##########################################################################
+    # slice and clean up
+    slice_ev = len(block_names1_candidates) / num_blocks
+    block_names1_candidates_sliced = block_names1_candidates[::slice_ev]
+    block_names1_ = filter(lambda x: x in saved_blocks, block_names1_candidates_sliced)
+    block_names1 = [to_block_name(block) for block in block_names1_]
+    block_names1 = block_names1[::-1]
+    ##########################################################################
+    # if empty, get last
+    if not block_names1: block_names1 = [saved_block_names[-1]]
+    ##########################################################################
+    return block_names1
 
 
 def block_to_iteration(model_name, block_name):
@@ -397,7 +421,7 @@ def make_tf_idf_mat(corpus, save_ev_block):
     doc_str_list = [] # scikit requires a list of space-separated words
     tfidf = TfidfVectorizer(vocabulary=corpus.token_list)
     for block_name, doc_id in corpus.gen_train_block_name_and_id():
-        doc_str = ' '.join(corpus.corpus_content[doc_id])
+        doc_str = ' '.join(corpus.doc_token_lists[doc_id])
         doc_str_list.append(doc_str)
     tfidf.fit(doc_str_list)
     ##########################################################################
@@ -405,14 +429,15 @@ def make_tf_idf_mat(corpus, save_ev_block):
     doc_str_list = []
     for block_name, doc_id in corpus.gen_train_block_name_and_id():
         if int(block_name) % save_ev_block == 0:
-            doc_str = ' '.join(corpus.corpus_content[doc_id])
+            doc_str = ' '.join(corpus.doc_token_lists[doc_id])
             doc_str_list.append(doc_str)
     tf_idf_mat = tfidf.fit_transform(doc_str_list).toarray()
     ##########################################################################
     return tf_idf_mat
 
 
-def make_probe_cf_traj_dict(corpus, save_ev_block, min_probe_freq=10):
+def make_probe_cf_traj_dict(corpus, save_ev_block, min_probe_freq=10,
+                            verbose=False):  # TODO link this number to num_ba_samples
     ##########################################################################
     print 'Making probe_cf_traj using train docs...'
     ##########################################################################
@@ -421,14 +446,23 @@ def make_probe_cf_traj_dict(corpus, save_ev_block, min_probe_freq=10):
     ##########################################################################
     # collect probe frequency
     for block_name, doc_id in corpus.gen_train_block_name_and_id():
-        doc_probe_list = corpus.corpus_content[doc_id]
+        doc_probe_list = corpus.doc_token_lists[doc_id]
         traj_id = int(block_name) - 1
         for probe in doc_probe_list:
             if probe in corpus.probe_id_dict:  probe_cf_traj_dict[probe][traj_id] += 1
     ##########################################################################
     # calc cumulative sum
     for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
-        probe_cf_traj_dict[probe] = np.cumsum(probe_freq_traj)
+        probe_cf_traj_dict[probe] = np.cumsum(probe_freq_traj).astype(np.int)
+    ##########################################################################
+    # check that probes occur at least min_probe_freq
+    num_probe_occurences = 0
+    if min_probe_freq is not None:
+        for probe in corpus.probe_list:
+            if verbose: print probe, probe_cf_traj_dict[probe][-1]
+            num_probe_occurences += probe_cf_traj_dict[probe][-1]
+            if probe_cf_traj_dict[probe][-1] < min_probe_freq:
+                print 'rnnlab WARNING: {} occurs less than {} times in training docs'.format(probe, min_probe_freq)
     ##########################################################################
     # get values from save_ev_block
     for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
@@ -438,13 +472,7 @@ def make_probe_cf_traj_dict(corpus, save_ev_block, min_probe_freq=10):
                 cfs.append(cf)
         probe_cf_traj_dict[probe] = cfs
     ##########################################################################
-    # check that probes occur at least min_probe_freq
-    if min_probe_freq is not None:
-        for probe in corpus.probe_list:
-            if probe_cf_traj_dict[probe][-1] < min_probe_freq:
-                print 'rnnlab WARNING: {} occurs less than {} times in training docs'.format(probe, min_probe_freq)
-    ##########################################################################
-    return probe_cf_traj_dict
+    return probe_cf_traj_dict, num_probe_occurences
 
 
 def make_lex_div_traj(corpus, save_ev_block):
@@ -454,7 +482,7 @@ def make_lex_div_traj(corpus, save_ev_block):
     lex_div_traj =[]
     for block_name, doc_id in corpus.gen_train_block_name_and_id():
         if int(block_name) % save_ev_block == 0:
-            doc_probe_list = corpus.corpus_content[doc_id]
+            doc_probe_list = corpus.doc_token_lists[doc_id]
             num_unique_tokens = len(list(set(doc_probe_list)))
             num_total_tokens = len(doc_probe_list)
             lex_div = float(num_unique_tokens) / num_total_tokens
@@ -481,7 +509,7 @@ def create_rnn_graph(num_input_units, configs_dict):
         from scrn import SCRN
         rnn = SCRN(num_input_units, configs_dict)
     else:
-        sys.exit('RNN flavor not recognized.')
+        raise AttributeError('rnnlab: RNN flavor not recognized.')
     ##########################################################################
     return rnn
 
@@ -552,6 +580,8 @@ def complete_phrase(database, phrase, num_words=4, num_outputs=5,
     :return: output_list: list containing num_outputs phrases (string)
     """
     ##########################################################################
+    import tensorflow as tf
+    ##########################################################################
     # restore rnn
     rnn_graph = create_rnn_graph(database.num_input_units, database.configs_dict)
     rnn_graph.saver.restore(rnn_graph.sess, os.path.join(runs_dir, database.model_name, 'Weights',
@@ -618,10 +648,7 @@ def calc_hca(database, acts_cols, cat_col, epochs=30):
     return train_hca, test_hca
 
 
-def calc_avg_probe_ba_list(database, num_ba_samples=None, thr_step=0.001, verbose=False):
-    ##########################################################################
-    # calc simmat
-    probe_simmat, probe_simmat_labels = calc_probe_sim_mat(database, num_ba_samples)
+def calc_ba_list(database, num_ba_samples, ba_method='prototype', thr_step=0.001):
     ##########################################################################
     print 'Calculating balanced accuracy...'
     ##########################################################################
@@ -638,22 +665,34 @@ def calc_avg_probe_ba_list(database, num_ba_samples=None, thr_step=0.001, verbos
         if round(thr_end, 2) == round(thr_start, 2):  # TODO can i use numpy equal approximation?
             break
     ##########################################################################
-    if mp.cpu_count() < num_cpus:
-        print 'rnnlab WARNING: CPU Count is < 6. Parallel calculation of token_ba may not work'
-    if verbose:
-        print 'Calculating token ba using {} processes with {} steps...'.format(num_cpus, thr_step)
-        print 'Threshold Ranges:'
-        for i in thr_lists: print i, '\n'
-    ##########################################################################
-    # calc ba and get cat confusion mat data
     start = time.time()
     pool = mp.Pool(processes=num_cpus)
-    async_results = [pool.apply_async(calc_ba_mats, args=(probe_simmat_labels,
-                                                          database.cat_list,
-                                                          database.probe_cat_dict,
-                                                          probe_simmat,
-                                                          thr_list,
-                                                          'token')) for thr_list in thr_lists]
+    ##########################################################################
+    # exemplar
+    if ba_method == 'exemplar' and num_ba_samples == 0:
+        probes_acts_df = database.get_probes_acts_df(num_ba_samples)
+        probe_simmat = calc_probe_sim_mat(probes_acts_df)
+        sampled_probes_list = database.probe_list
+        async_results = [pool.apply_async(calc_ba_mat_exemplar,
+                                          args=(database, thr_list, probe_simmat))
+                         for thr_list in thr_lists]
+    ##########################################################################
+    # prototype
+    elif ba_method == 'prototype':
+        cat_prototypes_mat = database.get_cat_prototypes_df().values
+        probes_acts_df = database.get_probes_acts_df(num_ba_samples)
+        probe_acts_mat = probes_acts_df.values
+        sampled_probes_list = probes_acts_df.index.tolist()
+        async_results = [pool.apply_async(calc_ba_mat_prototype,
+                                          args=(database, thr_list, cat_prototypes_mat,
+                                                probe_acts_mat, sampled_probes_list))
+                         for thr_list in thr_lists]
+    else:
+        raise AttributeError(
+            'rnnlab: Use either "prototype" or "exemplar" as method for calculating balanced accuracy.'
+            'Only "prototype" supports using num_ba_samples > 0')
+    ##########################################################################
+    # get async results
     ba_mats = [result.get()[0] for result in async_results]
     ba_mat = np.hstack((mat for mat in ba_mats))
     cat_confusion_mat_data_list_of_lists = [result.get()[1] for result in async_results]
@@ -662,13 +701,22 @@ def calc_avg_probe_ba_list(database, num_ba_samples=None, thr_step=0.001, verbos
     ##########################################################################
     print 'Took {} minutes to calc ba'.format(abs(time.time() - start) / 60.)
     ##########################################################################
-    # make ba_list
+    # make probe_ba_list
     token_ba_mat_col_means = np.nanmean(ba_mat, 0)
     best_token_ba_mat_col_id = np.argmax(token_ba_mat_col_means)
-    ba_list = np.multiply(ba_mat[:, best_token_ba_mat_col_id], 100).tolist()
-    tmp_df = pd.DataFrame(data={'probe': probe_simmat_labels,
-                                'token_ba': ba_list})
-    ba_list = tmp_df.groupby('probe').mean()['token_ba'].values
+    probe_ba_list = np.multiply(ba_mat[:, best_token_ba_mat_col_id], 100).tolist()
+    ##########################################################################
+    # make avg_probe_ba_list
+
+
+    print 'sampled_probes_list'
+    print len(sampled_probes_list)
+    print 'probe_ba_list'
+    print len(probe_ba_list)
+
+    avg_probe_ba_list = pd.DataFrame(
+        data={'probe': sampled_probes_list,
+              'token_ba': probe_ba_list}).groupby('probe').mean()['token_ba'].values.tolist()
     ##########################################################################
     # save confusion data
     cat_confusion_mat_data = cat_confusion_mat_data_list[best_token_ba_mat_col_id]
@@ -679,21 +727,19 @@ def calc_avg_probe_ba_list(database, num_ba_samples=None, thr_step=0.001, verbos
              hits_by_cat_dict=cat_confusion_mat_data[0],
              fas_by_cat_dict=cat_confusion_mat_data[1])
     ##########################################################################
-    return ba_list  # TODO change this to return non-averaged ba, AND averaged ba
+    return probe_ba_list, avg_probe_ba_list, sampled_probes_list
 
 
-def calc_probe_sim_mat(database, num_ba_samples=None, method='pearson'):
+def calc_probe_sim_mat(all_acts_df):  # TODO get rid of any nesting
     ##########################################################################
     print 'Calculating probe simmat...'
     ##########################################################################
     # calc sim mat
-    all_acts_df, all_acts_labels = database.get_all_acts_df(num_ba_samples)
-    probe_simmat = all_acts_df.T.corr(method=method).values
-    probe_simmat_labels = all_acts_labels
+    probe_simmat = all_acts_df.T.corr().values
     nan_ids = np.where(np.isnan(probe_simmat).all(axis=1))[0]
     assert len(nan_ids) == 0
     ##########################################################################
-    return probe_simmat, probe_simmat_labels
+    return probe_simmat
 
 
 def calc_cat_sim_mat(database):
@@ -731,151 +777,158 @@ def calc_cat_sim_mat(database):
     return cat_simmat
 
 
-def calc_ba_mats(probe_list, cat_list, probe_cat_dict, probe_simmat, thr_list, output, verbose=False):
+def calc_ba_mat_exemplar(database, thr_list, probe_simmat):
     ##########################################################################
     # inits
-    assert len(probe_list) == len(probe_simmat)
     import pyprind
     pbar = pyprind.ProgBar(len(thr_list))
-    ba_mat = None
     cat_confusion_mat_data_list = []
-    num_probes = len(probe_list)
-    num_cats = len(cat_list)
+    num_probes = len(database.probe_list)
+    num_cats = len(database.cat_list)
     num_thrs = len(thr_list)
     ##########################################################################
-    # print header for analysis
-    if verbose:
-        print 'Calculating ba with thresholds {} to {}...'.format(thr_list[0], thr_list[-1])
-        print '{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}'.format(
-            'Threshold', 'Hits', 'Misses', 'HitRate', 'CR', 'FA', 'CRRate', 'BA', 'dprime', 'c')
-    ##########################################################################
     # initialisations
-    category_hits = np.zeros([num_cats, num_thrs], float)
-    category_misses = np.zeros([num_cats, num_thrs], float)
-    category_false_alarms = np.zeros([num_cats, num_thrs], float)
-    category_correct_rejections = np.zeros([num_cats, num_thrs], float)
     item_hits = np.zeros([num_probes, num_thrs], float)
     item_misses = np.zeros([num_probes, num_thrs], float)
     item_false_alarms = np.zeros([num_probes, num_thrs], float)
     item_correct_rejections = np.zeros([num_probes, num_thrs], float)
-    cat_ba_mat = np.zeros([num_cats, num_thrs], float)
-    token_ba_mat = np.zeros([num_probes, num_thrs], float)
+    ba_mat = np.zeros([num_probes, num_thrs], float)
     ##########################################################################
     for n, thr in enumerate(thr_list):
         pbar.update()
         ##########################################################################
-        hits_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in cat_list} for cat_1 in cat_list}
-        fas_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in cat_list} for cat_1 in cat_list}
+        hits_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in database.cat_list} for cat_1 in database.cat_list}
+        fas_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in database.cat_list} for cat_1 in database.cat_list}
         ##########################################################################
         # calc hits, misses, false alarms, correct rejections
         for i in range(num_probes):
-            token_1 = probe_list[i]
-            cat_1 = probe_cat_dict[token_1]
-            cat_id_1 = cat_list.index(cat_1)
+            token_1 = database.probe_list[i]
+            cat_1 = database.probe_cat_dict[token_1]
 
             for j in range(num_probes):
                 if i != j:
-                    token_2 = probe_list[j]
-                    cat_2 = probe_cat_dict[token_2]
+                    token_2 = database.probe_list[j]
+                    cat_2 = database.probe_cat_dict[token_2]
                     sim = probe_simmat[i, j]
 
                     if sim != 'nan':
                         if cat_1 == cat_2:
                             if sim > thr:
-                                category_hits[cat_id_1, n] += 1
                                 item_hits[i, n] += 1
                                 hits_by_cat_dict[cat_1][cat_2] += 1  # for confusion matrix data
                             else:
-                                category_misses[cat_id_1, n] += 1
                                 item_misses[i, n] += 1
                         else:
                             if sim > thr:
-                                category_false_alarms[cat_id_1, n] += 1
                                 item_false_alarms[i, n] += 1
                                 fas_by_cat_dict[cat_1][cat_2] += 1  # for confusion matrix data
                             else:
-                                category_correct_rejections[cat_id_1, n] += 1
                                 item_correct_rejections[i, n] += 1
         ##########################################################################
-        # calc category balanced accuracy
-        if output == 'cat':
-            for cat_id in range(num_cats):
-
-                current_hits = category_hits[cat_id, n]
-                current_misses = category_misses[cat_id, n]
-                current_false_alarms = category_false_alarms[cat_id, n]
-                current_correct_rejections = category_correct_rejections[cat_id, n]
-
-                if (current_hits + current_misses) > 0:
-                    sensitivity = current_hits / (
-                        current_hits + current_misses)  # perc correct when correct answer answer was "same"
-                else:
-                    sensitivity = 'nan'
-                if (current_correct_rejections + current_false_alarms) > 0:
-                    specificity = current_correct_rejections / (
-                        current_correct_rejections + current_false_alarms)  # perc correct when correct answer was "different"
-                else:
-                    specificity = 'nan'
-                if (sensitivity != 'nan') and (specificity != 'nan'):
-                    current_balanced_accuracy = (float(sensitivity) + float(specificity)) / 2.0
-                else:
-                    current_balanced_accuracy = 'nan'
-
-                cat_ba_mat[cat_id, n] = current_balanced_accuracy
-                ba_mat = cat_ba_mat
-        ##########################################################################
         # calc token balanced accuracy
-        elif output == 'token':
-            for i in range(num_probes):
+        for i in range(num_probes):
 
-                current_hits = item_hits[i, n]
-                current_misses = item_misses[i, n]
-                current_false_alarms = item_false_alarms[i, n]
-                current_correct_rejections = item_correct_rejections[i, n]
+            current_hits = item_hits[i, n]
+            current_misses = item_misses[i, n]
+            current_false_alarms = item_false_alarms[i, n]
+            current_correct_rejections = item_correct_rejections[i, n]
 
-                if (current_hits + current_misses) > 0:
-                    sensitivity = current_hits / (
-                        current_hits + current_misses)  # perc correct when correct answer answer was "same"
-                else:
-                    sensitivity = 'nan'
-                if (current_correct_rejections + current_false_alarms) > 0:
-                    specificity = current_correct_rejections / (
-                        current_correct_rejections + current_false_alarms)  # perc correct when correct answer was "different"
-                else:
-                    specificity = 'nan'
-                if (sensitivity != 'nan') and (specificity != 'nan'):
-                    current_item_BA = (float(sensitivity) + float(specificity)) / 2.0
-                else:
-                    current_item_BA = 'nan'
+            if (current_hits + current_misses) > 0:
+                sensitivity = current_hits / (
+                    current_hits + current_misses)  # perc correct when correct answer answer was "same"
+            else:
+                sensitivity = 'nan'
+            if (current_correct_rejections + current_false_alarms) > 0:
+                specificity = current_correct_rejections / (
+                    current_correct_rejections + current_false_alarms)  # perc correct when correct answer was "different"
+            else:
+                specificity = 'nan'
+            if (sensitivity != 'nan') and (specificity != 'nan'):
+                current_item_BA = (float(sensitivity) + float(specificity)) / 2.0
+            else:
+                current_item_BA = 'nan'
 
-                token_ba_mat[i, n] = current_item_BA
-                ba_mat = token_ba_mat
-        ##########################################################################
-        # print signal detection scores
-        if verbose:
-            current_hit_sums = category_hits[:, n].sum()
-            current_miss_sums = category_misses[:, n].sum()
-            current_hit_rate = current_hit_sums / (current_hit_sums + current_miss_sums)
-            current_correct_rejection_sums = category_correct_rejections[:, n].sum()
-            current_false_alarm_sums = category_false_alarms[:, n].sum()
-            current_cr_rate = current_correct_rejection_sums / (
-                current_correct_rejection_sums + current_false_alarm_sums)
-            d_prime, beta, c, ad = calculate_dprime(
-                current_hit_sums, current_miss_sums, current_false_alarm_sums, current_correct_rejection_sums)
-            current_threshold_BA_mean = np.nanmean(ba_mat[:, n])
-            print '{:>10.4}{:>10}{:>10}{:>10.4}{:>10}{:>10}{:>10.4}{:>10.4}{:>10.2}{:>10.4}' \
-                .format(thr,
-                        current_hit_sums,
-                        current_miss_sums,
-                        current_hit_rate * 100,
-                        current_correct_rejection_sums,
-                        current_false_alarm_sums,
-                        current_cr_rate * 100,
-                        current_threshold_BA_mean * 100,
-                        d_prime,
-                        c)
+            ba_mat[i, n] = current_item_BA
         ##########################################################################
         # save hits and false alarms to cat_confusion_mat_data_list
+        cat_confusion_mat_data_list.append((hits_by_cat_dict, fas_by_cat_dict))
+    ##########################################################################
+    return ba_mat, cat_confusion_mat_data_list
+
+
+def calc_ba_mat_prototype(database, thr_list, cat_prototypes_mat, probe_acts_mat, sampled_probes_list):
+    ##########################################################################
+    # inits
+    import pyprind
+    pbar = pyprind.ProgBar(len(thr_list))
+    cat_confusion_mat_data_list = []
+    num_probes = len(sampled_probes_list)
+    num_cats = len(database.cat_list)
+    num_thrs = len(thr_list)
+    ##########################################################################
+    # initialisations
+    item_hits = np.zeros([num_probes, num_thrs], float)
+    item_misses = np.zeros([num_probes, num_thrs], float)
+    item_false_alarms = np.zeros([num_probes, num_thrs], float)
+    item_correct_rejections = np.zeros([num_probes, num_thrs], float)
+    ba_mat = np.zeros([num_probes, num_thrs], float)
+    ##########################################################################
+    for n, thr in enumerate(thr_list):
+        pbar.update()
+        ##########################################################################
+        hits_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in database.cat_list} for cat_1 in database.cat_list}
+        fas_by_cat_dict = {cat_1: {cat_2: 0 for cat_2 in database.cat_list} for cat_1 in database.cat_list}
+        ##########################################################################
+        # calc hits, misses, false alarms, correct rejections
+        for i in range(num_probes):
+            probe = sampled_probes_list[i]
+            cat_1 = database.probe_cat_dict[probe]
+            probe_act = probe_acts_mat[i]
+
+            for j in range(num_cats):
+                cat_2 = database.cat_list[j]
+                cat_prototype_act = cat_prototypes_mat[j]
+                sim = np.corrcoef(cat_prototype_act, probe_act)[1, 0]
+
+                if cat_1 == cat_2:
+                    if sim > thr:
+                        item_hits[i, n] += 1
+                        hits_by_cat_dict[cat_1][cat_2] += 1  # for confusion matrix data
+                    else:
+                        item_misses[i, n] += 1
+                else:
+                    if sim > thr:
+                        item_false_alarms[i, n] += 1
+                        fas_by_cat_dict[cat_1][cat_2] += 1  # for confusion matrix data
+                    else:
+                        item_correct_rejections[i, n] += 1
+        ##########################################################################
+        # calc token balanced accuracy
+        for i in range(num_probes):
+
+            current_hits = item_hits[i, n]
+            current_misses = item_misses[i, n]
+            current_false_alarms = item_false_alarms[i, n]
+            current_correct_rejections = item_correct_rejections[i, n]
+
+            if (current_hits + current_misses) > 0:
+                sensitivity = current_hits / (
+                    current_hits + current_misses)  # perc correct when correct answer answer was "same"
+            else:
+                sensitivity = 'nan'
+            if (current_correct_rejections + current_false_alarms) > 0:
+                specificity = current_correct_rejections / (
+                    current_correct_rejections + current_false_alarms)  # perc correct when correct answer was "different"
+            else:
+                specificity = 'nan'
+            if (sensitivity != 'nan') and (specificity != 'nan'):
+                current_item_BA = (float(sensitivity) + float(specificity)) / 2.0
+            else:
+                current_item_BA = 'nan'
+
+            ba_mat[i, n] = current_item_BA
+        ##########################################################################
+        # collect hits and false alarms
         cat_confusion_mat_data_list.append((hits_by_cat_dict, fas_by_cat_dict))
     ##########################################################################
     return ba_mat, cat_confusion_mat_data_list
@@ -940,7 +993,7 @@ def load_num_synsets(probe, verbose=False):
 
 def calc_num_probe_acts_clusters(database, probe, min_num_acts=1, method='elbow'):
     ##########################################################################
-    acts_mat = database.get_token_acts_df(probe).values
+    acts_mat = database.get_probe_acts_df(probe).values
     if method == 'elbow':
         if len(acts_mat) > min_num_acts:
             lnk0 = linkage(pdist(acts_mat))
@@ -955,7 +1008,7 @@ def calc_num_probe_acts_clusters(database, probe, min_num_acts=1, method='elbow'
     return num_probe_acts_clusters
 
 
-def plot_best_fit_line(ax, xys, fontsize):
+def plot_best_fit_line(ax, xys, fontsize, color='red', linewidth=2.0, zorder=3, x_pos=0.05, y_pos=0.9):
     ##########################################################################
     x, y = zip(*xys)
     best_fit_fxn = np.polyfit(x, y, 1, full=True)
@@ -963,10 +1016,11 @@ def plot_best_fit_line(ax, xys, fontsize):
     intercept = best_fit_fxn[0][1]
     xl = [min(x), max(x)]
     yl = [slope * xx + intercept for xx in xl]
-    ax.plot(xl, yl, linewidth=2.0, c='red')
-    ##########################################################################
+    ax.plot(xl, yl, linewidth=linewidth, c=color, zorder=zorder)
+    ########################################################################## # TODO why does x-pos not work here?
     # plot rsqrd
     variance = np.var(y)
     residuals = np.var([(slope * xx + intercept - yy) for xx, yy in zip(x, y)])
     Rsqr = np.round(1 - residuals / variance, decimals=4)
-    ax.text(0.01, 0.9, '$R^2$ = {}'.format(Rsqr), fontsize=fontsize)
+    if Rsqr > 0.5: fontsize += 5
+    ax.text(x_pos, y_pos, '$R^2$ = {}'.format(Rsqr), transform=ax.transAxes, fontsize=fontsize)

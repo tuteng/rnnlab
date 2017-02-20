@@ -3,6 +3,12 @@ BODY customclust
 FAMILY customclust
 #
 dog freqhist
+one freqhist
+day freqhist
+yesterday freqhist
+dog freqhist
+mom freqhist
+infant freqhist
 #
 plant custompdh
 #

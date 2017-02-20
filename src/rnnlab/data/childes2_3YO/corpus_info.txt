@@ -1,4 +1,4 @@
 corpus_name: childes2_3YO
-num_documents: 2801
+num_documents: 2873
 num_types: 22448
-num_tokens: 5237378
+num_tokens: 5383894
