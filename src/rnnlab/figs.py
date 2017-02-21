@@ -145,7 +145,8 @@ def make_custom_neighbors_table_fig(database, probes, num_neighbors=10,
                                     num_trunc_cols=3):  # TODO this can be simplified
     ##########################################################################
     # load data
-    probe_simmat, _ = calc_probe_sim_mat(database)
+    probes_acts_df = database.get_probes_acts_df()
+    probe_simmat = calc_probe_sim_mat(probes_acts_df)
     neighbors_mat_list = []
     col_labels_list = []
     sim_tuples_list_list = []
@@ -191,7 +192,8 @@ def make_custom_neighbors_table_fig(database, probes, num_neighbors=10,
 def make_neighbors_table_fig(database, cat, num_neighbors=10, num_trunc_cols=5):
     ##########################################################################
     # load data
-    probe_simmat, _ = calc_probe_sim_mat(database)
+    probes_acts_df = database.get_probes_acts_df()
+    probe_simmat = calc_probe_sim_mat(probes_acts_df)
     col_labels = database.cat_probe_list_dict[cat]
     neighbors_mat_list = []
     col_labels_list = []
@@ -243,16 +245,17 @@ def make_neighbors_table_fig(database, cat, num_neighbors=10, num_trunc_cols=5):
     return fig
 
 
-def make_acts_dh_fig(database, probe=None):
+def make_acts_dh_fig(database, probe=None, max_num_acts=1000):
     ##########################################################################
     # make probes_acts_df
     if probe:
-        probes_acts_df = database.get_probe_acts_df(probe)
+        probe_acts_df = database.get_probe_acts_df(probe)
+        acts_mat = probe_acts_df.values[:max_num_acts]
     else:
-        probes_acts_df = database.get_probes_acts_df(num_ba_samples=None)
-    probes_acts_mat = probes_acts_df.values
+        probes_acts_df = database.get_probes_acts_df()
+        acts_mat = probes_acts_df.values
     ##########################################################################
-    vmin, vmax = np.min(probes_acts_mat), np.max(probes_acts_mat)
+    vmin, vmax = np.min(acts_mat), np.max(acts_mat)
     print 'Acts mat | min: {:.2} max: {:.2}'.format(vmin, vmax)
     ##########################################################################
     # fig
@@ -263,7 +266,7 @@ def make_acts_dh_fig(database, probe=None):
     # axes
     ax_heatmap.yaxis.tick_right()
     ax_heatmap.set_xlabel('Hidden Units', fontsize=ax_font_size)
-    num_acts = len(probes_acts_mat)
+    num_acts = len(acts_mat)
     if probe:
         ax_heatmap.set_ylabel('{} Examples of "{}"'.format(num_acts, probe), fontsize=ax_font_size)
     else:
@@ -280,21 +283,22 @@ def make_acts_dh_fig(database, probe=None):
     rcParams['lines.linewidth'] = 0.5
     ##########################################################################
     # left dendrogram
-    lnk0 = linkage(pdist(probes_acts_mat))
+    print acts_mat.shape
+    lnk0 = linkage(pdist(acts_mat))
     dg0 = dendrogram(lnk0,
                      ax=ax_dendleft,
                      orientation='right',
                      color_threshold=-1,
                      no_labels=True)
     # top dendrogram
-    lnk1 = linkage(pdist(probes_acts_mat.T))
+    lnk1 = linkage(pdist(acts_mat.T))
     dg1 = dendrogram(lnk1,
                      ax=ax_dendtop,
                      color_threshold=-1,
                      no_labels=True)
     ##########################################################################
     # Reorder the values in x to match the order of the leaves of the dendrograms
-    z = probes_acts_mat[dg0['leaves'], :]  # sorting rows
+    z = acts_mat[dg0['leaves'], :]  # sorting rows
     z = z[:, dg1['leaves']]  # sorting cols
     ##########################################################################
     # heatmap
@@ -1566,6 +1570,7 @@ def make_comp_binned_freqs_fig(trajdatabase, probe_tuples):
     figsize = (6, 4)
     ax_font_size = 8
     leg_font_size = 8
+    leg_fontsize = 10
     linewidth = 2.0
     fig, ax = plt.subplots(1, figsize=figsize)
     ##########################################################################
@@ -1578,11 +1583,16 @@ def make_comp_binned_freqs_fig(trajdatabase, probe_tuples):
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
     ##########################################################################
     # plot
-    for (x, y, ci, probe_class) in xys:
-        ax.plot(x, y, '-', linewidth=linewidth, c=next(palette),
-                label='{} avg probe freq +/- 95% CI'.format(probe_class))
-        ax.fill_between(x, y + ci, y - ci, alpha=0.15)
-    ax.axhline(0, linestyle='--', color='grey')
+    if len(y) == 1:
+        props = dict(boxstyle='round', facecolor='white', alpha=0.5)
+        ax.text(0.05, 0.5, 'Data not available', transform=ax.transAxes,
+                fontsize=leg_fontsize, verticalalignment='bottom', bbox=props)
+    else:
+        for (x, y, ci, probe_class) in xys:
+            ax.plot(x, y, '-', linewidth=linewidth, c=next(palette),
+                    label='{} avg probe freq +/- 95% CI'.format(probe_class))
+            ax.fill_between(x, y + ci, y - ci, alpha=0.15)
+        ax.axhline(0, linestyle='--', color='grey')
     ##########################################################################
     # legend
     ax.legend(fontsize=leg_font_size, loc='best')

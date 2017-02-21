@@ -87,17 +87,19 @@ def get_log_mtime():
     return log_mtime
 
 
-def load_custom_probes_tuples():
+def load_custom_fig_input(btn_name):
     ##########################################################################
-    custom_probes = []
-    with open(os.path.join('static', 'custom_probes.txt'), 'r') as f:
+    tuples = []
+    with open(os.path.join('static', 'custom_fig_input.txt'), 'r') as f:
         for line in f.readlines():
             if not line.startswith('#'):
                 probe = line.split()[0]
                 probe_class = line.split()[1]
-                custom_probes.append((probe, probe_class))
+                tuples.append((probe, probe_class))
     ##########################################################################
-    return custom_probes
+    fig_input = [tuple[0] for tuple in tuples if tuple[1] == btn_name]
+    ##########################################################################
+    return fig_input
 
 
 def make_imgs(*fig_tuples):

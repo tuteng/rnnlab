@@ -1,26 +1,3 @@
-#
-BODY customclust
-FAMILY customclust
-#
-dog freqhist
-one freqhist
-day freqhist
-yesterday freqhist
-dog freqhist
-mom freqhist
-infant freqhist
-#
-one custompdh
-two custompdh
-three custompdh
-#
-dog customn
-mom customn
-banana customn
-shoe customn
-bed customn
-jupiter customn
-# 
 fruit hypernyms
 music hypernyms
 body hypernyms

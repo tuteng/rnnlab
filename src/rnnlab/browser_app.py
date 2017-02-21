@@ -11,7 +11,7 @@ from utils import get_log_mtime
 from utils import make_block_names1
 from utils import make_imgs
 from utils import delete_model
-from utils import load_custom_probes_tuples
+from utils import load_custom_fig_input
 from utils import load_filtered_log_entries
 from utils import make_block_names2_dict
 from utils import load_database
@@ -209,24 +209,23 @@ def model(model_name1):
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('cat_conf_mat') is not None:
-        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'dim_red')
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'cat_conf_mat')
         fig_tuple1 = (make_cat_confusion_mat_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
     elif request.args.get('c_probe_dh') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_probe_dh')
-        custom_probes_tuples = load_custom_probes_tuples()
-        custom_tuples = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'custompdh']
+        fig_input = load_custom_fig_input('c_probe_dh')
         fig_tuples = []
-        for custom_probe in custom_tuples:
-            fig_tuples.append((make_acts_dh_fig(database, custom_probe), 'mpl'))
+        for probe in fig_input:
+            fig_tuples.append((make_acts_dh_fig(database, probe), 'mpl'))
             databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
-            fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, custom_probe), 'mpl'))
-            fig_tuples.append((make_probe_ba_vs_pp_fig(database, custom_probe), 'mpl'))
+            fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, probe), 'mpl'))
+            fig_tuples.append((make_probe_ba_vs_pp_fig(database, probe), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
     elif request.args.get('comp2models') is not None:
-        comp2models_request = request.args.get('comp2models').split('+')  # TODO use hidden buttons
+        comp2models_request = request.args.get('comp2models').split('+')  # TODO use hidden html buttons
         block_name1_id = int(comp2models_request[0])
         block_name1 = block_names1[block_name1_id]
         model_name2, block_name2 = comp2models_request[1], comp2models_request[2]
@@ -241,8 +240,8 @@ def model(model_name1):
         fig_tuple2 = (make_probes_ba_traj_fig(databases, palette), 'mpl')
         fig_tuple3 = (make_test_pp_traj_fig(databases, palette), 'mpl')
         fig_tuple4 = (make_probe_sim_comp_fig(databases, palette), 'mpl')
-        custom_probes_tuples = load_custom_probes_tuples()
-        custom_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customn']
+        custom_fig_input = load_custom_fig_input()
+        custom_probes = [tuple[0] for tuple in custom_fig_input if tuple[1] == 'customn']
         fig_tuple5 = (make_neighbors_rbo_fig(databases, custom_probes), 'bokeh')
         fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
         fig_tuple7 = (make_num_clusters_ba_diff_corr_fig(databases), 'mpl')
@@ -255,36 +254,31 @@ def model(model_name1):
                          fig_tuple4, fig_tuple5, fig_tuple6, fig_tuple7,
                          fig_tuple8, fig_tuple9, *fig_tuples)
     ##########################################################################
-    elif request.args.get('comp_probes') is not None:
-        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'comp_probes')
-        custom_probes_tuples = load_custom_probes_tuples()
-        comp_probe_tuples = [tuple for tuple in custom_probes_tuples
-                             if not tuple[1] in ['custompdh','customn','freqhist','customclust']]
-        fig_tuple1 = (make_comp_probes_ba_fig(database, comp_probe_tuples), 'mpl')
-        fig_tuple2 = (make_comp_binned_freqs_fig(database, comp_probe_tuples), 'mpl')
+    elif request.args.get('comp_trajs') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'comp_trajs')
+        compare_probes_tuples = load_compare_probes_tuples()  # TODO
+        fig_tuple1 = (make_comp_probes_ba_fig(database, compare_probes_tuples), 'mpl')
+        fig_tuple2 = (make_comp_binned_freqs_fig(database, compare_probes_tuples), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2)
     ##########################################################################
     elif request.args.get('c_neighbors') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_neighbors')
-        custom_probes_tuples = load_custom_probes_tuples()
-        customn_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customn']
-        fig_tuple1 = (make_custom_neighbors_table_fig(database, customn_probes), 'mpl')
+        probes = load_custom_fig_input('c_neighbors')
+        fig_tuple1 = (make_custom_neighbors_table_fig(database, probes), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
     elif request.args.get('c_freq_hist') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_freq_hist')
-        custom_probes_tuples = load_custom_probes_tuples()
-        freqhist_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'freqhist']
-        fig_tuple1 = (make_probe_freq_hist_fig(database, freqhist_probes), 'mpl')
+        probes = load_custom_fig_input('c_freq_hist')
+        fig_tuple1 = (make_probe_freq_hist_fig(database, probes), 'mpl')
         fig_tuple2 = (make_cat_count_pie_chart_fig(database), 'mpl')
         fig_tuple3 = (make_corpus_traj_fig(database), 'bokeh')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
     ##########################################################################
     elif request.args.get('c_cluster') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_cluster')
-        custom_probes_tuples = load_custom_probes_tuples()
-        custom_cats = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customclust']
-        custom_cats = map(lambda x: x.upper(), custom_cats)
+        cats = load_custom_fig_input('c_cluster')
+        custom_cats = map(lambda x: x.upper(), cats)
         fig_tuple1 = (make_custom_cat_clust_fig(database, custom_cats), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################

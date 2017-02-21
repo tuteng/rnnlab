@@ -7,7 +7,7 @@ cluster 'Activations Clustering' block
 neighbors 'Nearest Neighbors' block
 probe_trajs 'Probe Balanced Accuracy & Probe Perplexity Trajectories' traj
 cat_conf_mat 'Category Confusion Matrix' block
-comp_probe_trajs 'Probe Trajectories Comparison' traj
+comp_trajs 'Probe Trajectories Comparison' traj
 c_neighbors 'Nearest Neighbors' block
 c_probe_dh 'Activations Dendrogram Heatmap' block
 c_freq_hist 'Token & Corpus Data' traj

@@ -1,0 +1,20 @@
+#
+BODY c_cluster
+FAMILY c_cluster
+#
+dog c_freq_hist
+one c_freq_hist
+day c_freq_hist
+yesterday c_freq_hist
+dog c_freq_hist
+mom c_freq_hist
+infant c_freq_hist
+#
+plant c_probe_dh
+#
+dog c_neighbors
+mom c_neighbors
+banana c_neighbors
+shoe c_neighbors
+bed c_neighbors
+jupiter c_neighbors

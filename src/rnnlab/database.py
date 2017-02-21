@@ -196,10 +196,10 @@ class DataBase:
     def get_probe_acts_df(self, probe_to_query):
         ##########################################################################
         probe_to_query = probe_to_query
-        token_ids = self.df.query("probe == @probe_to_query").index.tolist()
-        token_acts_df = self.df.loc[token_ids].filter(regex='H')
+        df_ids = self.df.query("probe == @probe_to_query").index.tolist()
+        probe_acts_df = self.df.loc[df_ids].filter(regex='H')
         ##########################################################################
-        return token_acts_df
+        return probe_acts_df
 
 
     def get_cat_acts_df(self, cat_to_query):
