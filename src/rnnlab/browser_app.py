@@ -19,7 +19,8 @@ from utils import block_to_iteration
 from utils import load_rnnlabrc
 from utils import complete_phrase
 from utils import get_block_name_from_request
-
+from utils import make_btn_name_desc_dict
+from utils import load_database_and_img_desc
 
 from figs import make_neighbors_rbo_fig
 from figs import make_custom_neighbors_table_fig
@@ -57,17 +58,12 @@ from figs import make_ba_vs_pp_fig
 from figs import make_probe_ba_vs_pp_fig
 
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
-
 app = Flask(__name__)
+btn_name_desc_dict, btn_names_top, btn_names_bottom = make_btn_name_desc_dict()
 
-btn_names_top = ['avgtrajBtn', 'dimredBtn', 'catsimBtn', 'bdBtn',
-                 'clustBtn', 'neighborsBtn', 'trajBtn', 'catconfBtn']
-
-btn_names_bottom = ['compprobes', 'customn', 'custompdh', 'freqhist',
-                    'customclust', 'delete', 'complete']
 
 headers_to_display = ['model_name', 'block_order', 'num_ba_samples',
-                      'bptt_steps', 'completed', 'best_probes_ba']
+                      'bptt_steps', 'completed', 'best_probes_ba']  # TODO make this into txt file too
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -144,9 +140,10 @@ def model(model_name1):
                          ['dev', socket.gethostname(), get_log_mtime()])}
     ##########################################################################
     # get model_names2 and block_names2_dict
-    database = load_database(model_name1)
-    block_names1 = make_block_names1(database)
-    model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)
+    block_names1 = make_block_names1(model_name1)  # TODO what must i do to do without this?
+    model_names2 = None
+    block_names2_dict = None
+    model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)  # TODO
     #########################################################################
     if request.args.get('delete') is not None:
         if 'yes' == raw_input('Enter yes to delete {} :\n'.format(model_name1)):
@@ -156,13 +153,11 @@ def model(model_name1):
         return redirect(url_for('log'))
     #########################################################################
     elif request.args.get('complete') is not None:
-        block_name1 = get_block_name_from_request(request, 'complete',
-                                                  block_names1)  # TODO make this work for all buttons
+        block_name1 = get_block_name_from_request(request, 'complete', block_names1)
         return redirect(url_for('complete', model_name1=model_name1, block_name1=block_name1))
     ##########################################################################
-    elif request.args.get('avgtrajBtn') == 'traj':
-        imgs_desc = 'Average Trajectories'
-        database = load_database(model_name1)
+    elif request.args.get('avg_trajs') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'avg_trajs')
         num_comparisons = 1
         palette = cycle(Category10[max(3, num_comparisons)][:num_comparisons])
         fig_tuple1 = (make_probes_ba_traj_fig([database], palette), 'mpl')
@@ -171,51 +166,40 @@ def model(model_name1):
         fig_tuple4 = (make_ba_pp_window_corr_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4)
     ##########################################################################
-    elif request.args.get('dimredBtn') not in ['traj', None]:
-        block_name1 = request.args.get('dimredBtn')
-        imgs_desc = 'Dimensionality Reduction Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('dim_red') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'dim_red')
         fig_tuple1 = (make_acts_2d_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
-    elif request.args.get('catsimBtn') not in ['traj', None]:
-        block_name1 = request.args.get('catsimBtn')
-        imgs_desc = 'Category Similarity Heatmap-Dendrogram Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('cat_sim') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'cat_sim')
         fig_tuple1 = (make_cat_sim_dh_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
-    elif request.args.get('bdBtn') not in ['traj', None]:
-        block_name1 = request.args.get('bdBtn')
-        imgs_desc = 'Balanced Accuracy Breakdown by Probe Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('ba_by_probe') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'ba_by_probe')
         fig_tuple1 = (make_ba_breakdown_annotated_fig(database), 'mpl')
         fig_tuple2 = (make_ba_breakdown_fig(database), 'mpl')
         fig_tuple3 = (make_ba_vs_pp_fig(database), 'mpl')
         fig_tuple4 = (make_pairplot_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4)
     ##########################################################################
-    elif request.args.get('clustBtn') not in ['traj', None]:
-        block_name1 = request.args.get('clustBtn')
-        imgs_desc = 'Activation States Clustering Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('cluster') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'cluster')
         fig_tuples = []
         for cat in database.cat_list:
             fig_tuples.append((make_cat_cluster_fig(database, cat), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
-    elif request.args.get('neighborsBtn') not in ['traj', None]:
-        block_name1 = request.args.get('neighborsBtn')
-        imgs_desc = 'Nearest Neighbors Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('neighbors') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'neighbors')
         fig_tuples = []
         for cat in database.cat_list:
             fig_tuples.append((make_neighbors_table_fig(database, cat), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
-    elif request.args.get('trajBtn') == 'traj':
-        imgs_desc = 'Token Balanced Accuracy & Perplexity Trajectories'
-        database = load_database(model_name1)
+    elif request.args.get('probe_trajs') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'probe_trajs')
         fig_tuples = []
         for cat in database.cat_list:
             cat_probes = database.cat_probe_list_dict[cat]
@@ -224,29 +208,25 @@ def model(model_name1):
             fig_tuples.append((make_cfreq_traj_fig(database, cat_probes), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
-    elif request.args.get('catconfBtn') not in ['traj', None]:
-        block_name1 = request.args.get('catconfBtn')
-        imgs_desc = 'Category Confusion Matrix Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('cat_conf_mat') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'dim_red')
         fig_tuple1 = (make_cat_confusion_mat_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
-    elif request.args.get('custompdh') not in ['traj', None]:
-        block_name1 = request.args.get('custompdh')
-        imgs_desc = 'Activations Dendrogram-Heatmap Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('c_probe_dh') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_probe_dh')
         custom_probes_tuples = load_custom_probes_tuples()
         custom_tuples = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'custompdh']
         fig_tuples = []
         for custom_probe in custom_tuples:
             fig_tuples.append((make_acts_dh_fig(database, custom_probe), 'mpl'))
-            # databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
-            # fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, custom_probe), 'mpl'))
-            fig_tuples.append((make_probe_ba_vs_pp_fig(database, custom_probe), 'mpl'))  # TODO make this work
+            databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
+            fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, custom_probe), 'mpl'))
+            fig_tuples.append((make_probe_ba_vs_pp_fig(database, custom_probe), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
-    elif request.args.get('comp2models') not in ['traj', None]:
-        comp2models_request = request.args.get('comp2models').split('+')
+    elif request.args.get('comp2models') is not None:
+        comp2models_request = request.args.get('comp2models').split('+')  # TODO use hidden buttons
         block_name1_id = int(comp2models_request[0])
         block_name1 = block_names1[block_name1_id]
         model_name2, block_name2 = comp2models_request[1], comp2models_request[2]
@@ -275,9 +255,8 @@ def model(model_name1):
                          fig_tuple4, fig_tuple5, fig_tuple6, fig_tuple7,
                          fig_tuple8, fig_tuple9, *fig_tuples)
     ##########################################################################
-    elif request.args.get('compprobes') == 'traj':
-        imgs_desc = 'Probe Comparison'
-        database = load_database(model_name1)
+    elif request.args.get('comp_probes') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'comp_probes')
         custom_probes_tuples = load_custom_probes_tuples()
         comp_probe_tuples = [tuple for tuple in custom_probes_tuples
                              if not tuple[1] in ['custompdh','customn','freqhist','customclust']]
@@ -285,19 +264,15 @@ def model(model_name1):
         fig_tuple2 = (make_comp_binned_freqs_fig(database, comp_probe_tuples), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2)
     ##########################################################################
-    elif request.args.get('customn') not in ['traj', None]:
-        block_name1 = request.args.get('customn')
-        imgs_desc = 'Nearest Neighbors Block {}'.format(block_name1)
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('c_neighbors') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_neighbors')
         custom_probes_tuples = load_custom_probes_tuples()
         customn_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customn']
         fig_tuple1 = (make_custom_neighbors_table_fig(database, customn_probes), 'mpl')
         imgs = make_imgs(fig_tuple1)
     ##########################################################################
-    elif request.args.get('freqhist') == 'traj':
-        last_block_name = block_names1[-1]
-        database = load_database(model_name1, last_block_name)
-        imgs_desc = 'Token & Corpus Data'
+    elif request.args.get('c_freq_hist') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_freq_hist')
         custom_probes_tuples = load_custom_probes_tuples()
         freqhist_probes = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'freqhist']
         fig_tuple1 = (make_probe_freq_hist_fig(database, freqhist_probes), 'mpl')
@@ -305,10 +280,8 @@ def model(model_name1):
         fig_tuple3 = (make_corpus_traj_fig(database), 'bokeh')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3)
     ##########################################################################
-    elif request.args.get('customclust') not in ['traj', None]:
-        block_name1 = request.args.get('customclust')
-        imgs_desc = 'Custom Clustering'
-        database = load_database(model_name1, block_name1)
+    elif request.args.get('c_cluster') is not None:
+        database, imgs_desc = load_database_and_img_desc(model_name1, request, 'c_cluster')
         custom_probes_tuples = load_custom_probes_tuples()
         custom_cats = [tuple[0] for tuple in custom_probes_tuples if tuple[1] == 'customclust']
         custom_cats = map(lambda x: x.upper(), custom_cats)

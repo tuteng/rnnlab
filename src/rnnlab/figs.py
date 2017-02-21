@@ -7,7 +7,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
 import numpy as np
 import pandas as pd
-from bokeh.palettes import Inferno256
 from bokeh.models import Range1d
 from bokeh.models import ColumnDataSource
 from bokeh.models import HoverTool
@@ -422,7 +421,7 @@ def make_cat_sim_dh_fig(database, num_colors=None, y_title=False):
 def make_cat_cluster_fig(database, cat, xlim=False, bottom_off=False, num_probes_limit=20):
     ##########################################################################
     # load data
-    cat_prototypes_df = database.get_cat_prototypes_df(cat)
+    cat_prototypes_df = database.get_cat_acts_df(cat)
     probes_in_cat = cat_prototypes_df.index.tolist()
     num_probes_in_cat = len(probes_in_cat)
     if num_probes_limit and num_probes_in_cat > num_probes_limit:
@@ -474,7 +473,7 @@ def make_custom_cat_clust_fig(database, cats):
     cats_acts_mat_list = []
     cats_probe_list = []
     for cat in cats:
-        cat_prototypes_df = database.get_cat_prototypes_df(cat)
+        cat_prototypes_df = database.get_cat_acts_df(cat)
         cats_acts_mat_list.append(cat_prototypes_df.values)
         cats_probe_list += cat_prototypes_df.index.tolist()
     cat_acts_mat = np.vstack((mat for mat in cats_acts_mat_list))
@@ -503,7 +502,7 @@ def make_pairplot_fig(database, min_num_probe_acts=10):
 
     # load data
     avg_probe_ba_list = database.get_avg_probe_ba_list()
-    keys = ['probe_freq', 'avg_probe_pp', 'num_probe_acts', 'avg_probe_ba']
+    keys = ['probe_freq', 'avg_probe_pp']
     df_dict = {key: [] for key in keys}
     probes = []
     for n, probe in enumerate(database.probe_list):  # TODO rather than looping, retrieve whole list to speed tis up
@@ -523,7 +522,7 @@ def make_pairplot_fig(database, min_num_probe_acts=10):
             # num_synsets = max(load_num_synsets(probe), 1)
             # num_probe_acts_clusters = calc_num_probe_acts_clusters(database, probe)
             probe_freq = np.clip(database.probe_cf_traj_dict[probe][-1], 0, 400)  # TODO get rid of clipping
-            values = [probe_freq, avg_probe_pp, num_probe_acts, avg_probe_ba]
+            values = [probe_freq, avg_probe_pp]
             for key, value in zip(keys, values):
                 df_dict[key].append(value)
     df = pd.DataFrame(df_dict, index=probes)
@@ -577,11 +576,14 @@ def make_ba_vs_pp_fig(database):  # TODO make this a 29 subplot figure where eac
         for col_id in range(subplot_cols):
             ##########################################################################
             # axis
+            axarr[row_id, col_id].margins(0.2)
             axarr[row_id, col_id].set_ylim([0, 100])
             axarr[row_id, col_id].spines['right'].set_visible(False)
             axarr[row_id, col_id].spines['top'].set_visible(False)
             axarr[row_id, col_id].tick_params(axis='both', which='both', top='off', right='off')
-            # axarr[row_id, col_id].set_xticklabels(x, minor=False, fontsize=ax_font_size, rotation=90)
+            axarr[row_id, col_id].set_xticks([0, database.num_input_units])
+            axarr[row_id, col_id].set_xticklabels(['0', str(database.num_input_units)],
+                                                  minor=False, fontsize=ax_font_size, rotation=90)
             ##########################################################################
             if not cat_id == len(xys):
                 x, y, cat = xys[cat_id]
@@ -601,7 +603,7 @@ def make_ba_vs_pp_fig(database):  # TODO make this a 29 subplot figure where eac
             plot_best_fit_line(axarr[row_id, col_id], xys_, leg_fontsize, x_pos=0.05, y_pos=0.1, zorder=3)
     ##########################################################################
     # layout
-    # fig.tight_layout() # this makes common titles collide with fig
+    fig.subplots_adjust(bottom=0.15)
     ##########################################################################
     return fig
 
@@ -1378,7 +1380,7 @@ def make_probe_freq_ba_diff_corr_fig(databases, annotate_x_thr=5000):
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
     ax.set_ylabel('Balanced Accuracy Difference', fontsize=ax_font_size)
-    ax.set_xlabel('Probe Freq', fontsize=ax_font_size)
+    ax.set_xlabel('Frequency', fontsize=ax_font_size)
     ##########################################################################
     # plot
     ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
@@ -1400,42 +1402,49 @@ def make_probe_freq_ba_diff_corr_fig(databases, annotate_x_thr=5000):
 def make_probe_ba_vs_pp_fig(database, probe):
     ##########################################################################
     # load data
-    probe_pp_list = database.get_probe_pp_list(probe)
-    probe_ba_list = database.get_probe_ba_list(probe)
-    x = probe_pp_list
-    y = probe_ba_list
-
-    print 'probe_pp_list'
+    probe_pp_list = database.get_probe_pps(probe)
+    probe_ba_list = database.get_probe_bas(probe)
+    x = filter(lambda x: str(x) != 'nan', probe_pp_list)
+    y = filter(lambda x: str(x) != 'nan', probe_ba_list)
+    x, y = x[:len(y)], y[:len(x)]
+    print 'x'
     print x
     print
-    print 'probe_ba_list'
+    print 'y'
     print y
-
-    print len(x), len(y)
     ##########################################################################
     # seaborn
     import seaborn as sns
     sns.set_style('white')
     ##########################################################################
     # fig
-    figsize = (6, 6)
+    figsize = (3, 3)
     markersize = 10
     ax_font_size = 8
-    leg_fontsize = 12
+    leg_fontsize = 10
     fig, ax = plt.subplots(figsize=figsize)
     ##########################################################################
     # axis
+    ax.set_xlim([0, database.num_input_units])
+    ax.set_xticks([1, database.num_input_units])
+    ax.set_xticklabels(['1', str(database.num_input_units)], minor=False, fontsize=ax_font_size)
+    ax.set_ylim([0, 100])
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.set_ylabel('Probe Balanced Accuracy (%)', fontsize=ax_font_size)
-    ax.set_xlabel('Probe Perplexity', fontsize=ax_font_size)
+    ax.set_ylabel('Balanced Accuracy (%) of "{}"'.format(probe), fontsize=ax_font_size)
+    ax.set_xlabel('Perplexity', fontsize=ax_font_size)
     ##########################################################################
     # plot
-    ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
-    ax.axhline(y=50, linestyle='--', c='grey', zorder=1)
-    xys_ = zip(x, y)
-    # plot_best_fit_line(ax, xys_, leg_fontsize)
+    if len(y) == 1:
+        props = dict(boxstyle='round', facecolor='white', alpha=0.5)
+        ax.text(0.05, 0.5, 'Data not available', transform=ax.transAxes,
+                fontsize=leg_fontsize, verticalalignment='bottom', bbox=props)
+    else:
+        ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
+        ax.axhline(y=50, linestyle='--', c='grey', zorder=1)
+        xys_ = zip(x, y)
+        plot_best_fit_line(ax, xys_, leg_fontsize)
     ##########################################################################
     # layout
     fig.tight_layout()

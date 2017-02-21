@@ -61,7 +61,7 @@ class RNN():
         # make corpus
         corpus_kwargs = {key : self.configs_dict[key]
                          for key in ['corpus_name', 'vocab_file_name', 'freq_cutoff',
-                                     'probes_name', 'mb_size', 'bptt_steps', 'block_order']}
+                                     'probes_name', 'mb_size', 'bptt_steps', 'num_mbs_in_doc', 'block_order']}
         corpus_kwargs['num_epochs'] = self.num_epochs
         self.corpus = Corpus(**corpus_kwargs)
         ##########################################################################
@@ -466,6 +466,7 @@ class RNN():
             'num_ba_samples': 0,
             'model_name': self.make_model_name(flavor),
             'flavor': flavor,
+            'num_mbs_in_doc': 20,
             'corpus_name': None,
             'vocab_file_name': None,
             'freq_cutoff': None,

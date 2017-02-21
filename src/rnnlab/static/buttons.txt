@@ -1,0 +1,16 @@
+# these are the buttons used in browser app
+avg_trajs 'Average Trajectories' traj
+dim_red 'Dimensionality Reduction' block
+cat_sim 'Category Similarity Heatmap Dendrogram' block
+ba_by_probe 'Balanced Accuracy Breakdown by Probe' block
+cluster 'Activations Clustering' block
+neighbors 'Nearest Neighbors' block
+probe_trajs 'Probe Balanced Accuracy & Probe Perplexity Trajectories' traj
+cat_conf_mat 'Category Confusion Matrix' block
+comp_probe_trajs 'Probe Trajectories Comparison' traj
+c_neighbors 'Nearest Neighbors' block
+c_probe_dh 'Activations Dendrogram Heatmap' block
+c_freq_hist 'Token & Corpus Data' traj
+c_cluster 'Activations Clustering' block
+complete 'Complete-the-phrase' block
+delete 'n/a' n/a

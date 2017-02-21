@@ -83,6 +83,7 @@ class DataBase:
         ##########################################################################
         return saved_block_names
 
+
     def get_ba_breakdown_data(self):  # TODO split this into separate methods each retrieving a single result
         ##########################################################################
         # make df_cat_and_ba
@@ -101,6 +102,7 @@ class DataBase:
         ##########################################################################
         return cats_sorted_by_ba, cat_ba_dict, avg_probe_ba_list
 
+
     def get_avg_probe_pp_list(self, clip=True):
         ##########################################################################
         avg_probe_pp_list = self.df[['probe', 'avg_probe_pp']].groupby(
@@ -109,12 +111,17 @@ class DataBase:
         ##########################################################################
         return avg_probe_pp_list
 
+
     def get_avg_probe_ba_list(self):
         ##########################################################################
         avg_probe_ba_list = self.df[['probe', 'avg_probe_ba']].groupby(
             'probe').first()['avg_probe_ba'].values.tolist()
+
+        print self.df[['probe', 'avg_probe_ba']]
+
         ##########################################################################
         return avg_probe_ba_list
+
 
     def get_avg_probe_pp(self, probe_to_query, clip=True):
         ##########################################################################
@@ -125,6 +132,7 @@ class DataBase:
         ##########################################################################
         return avg_probe_pp
 
+
     def get_avg_probe_ba(self, probe_to_query):
         ##########################################################################
         probe_to_query = probe_to_query
@@ -133,25 +141,22 @@ class DataBase:
         ##########################################################################
         return avg_probe_ba
 
-    def get_probe_ba_list(self, probe_to_query):  # TODO get only maximum of num_ba_samples
+    def get_probe_bas(self, probe_to_query):
         ##########################################################################
         probe_to_query = probe_to_query
-
-        print self.df[['probe', 'probe_ba']].dropna()
-
-        row_ids = self.df.query("probe == @probe_to_query").index.tolist()
-        probe_ba_list = self.df.loc[row_ids]['probe_ba'].values.tolist()
+        row_ids = self.df.query("probe == @probe_to_query").dropna().index.tolist()
+        probe_bas = self.df.loc[row_ids]['probe_ba'].values.tolist()
         ##########################################################################
-        return probe_ba_list
+        return probe_bas
 
-    def get_probe_pp_list(self, probe_to_query, clip=True):
+    def get_probe_pps(self, probe_to_query, clip=True):
         ##########################################################################
         probe_to_query = probe_to_query
         row_ids = self.df.query("probe == @probe_to_query").index.tolist()
-        probe_pp_list = self.df.loc[row_ids]['probe_pp'].values.tolist()
-        if clip: probe_pp_list = np.clip(probe_pp_list, 1, self.num_input_units)
+        probe_pps = self.df.loc[row_ids]['probe_pp'].values.tolist()
+        if clip: probe_pps = np.clip(probe_pps, 1, self.num_input_units)
         ##########################################################################
-        return probe_pp_list
+        return probe_pps
 
 
     def get_traj(self, which_traj):
@@ -218,7 +223,7 @@ class DataBase:
         ##########################################################################
         return cat_prototypes_df
 
-    def get_probes_acts_df(self, num_ba_samples):
+    def get_probes_acts_df(self, num_ba_samples=0):
         ##########################################################################
         if num_ba_samples != 0:
             ##########################################################################

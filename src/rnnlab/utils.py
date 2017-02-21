@@ -8,6 +8,7 @@ import datetime
 import StringIO
 import subprocess
 import base64
+import re
 import pandas as pd
 import numpy as np
 from bokeh.embed import components
@@ -77,7 +78,7 @@ def block_name_exists(model_name, block_name):
         return False
 
 
-def get_log_mtime():  # TODO test this
+def get_log_mtime():
     ##########################################################################
     log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
     log_mtime_unformatted = datetime.datetime.fromtimestamp(os.path.getmtime(log_path))
@@ -284,15 +285,19 @@ def load_filtered_log_entries(headers_to_display, allow_incomplete=True):
     return filtered_log_entries, filtered_headers
 
 
-def make_block_names1(database, num_blocks=5):
+def make_block_names1(model_name, num_blocks=5):
+    ##########################################################################
+    # saved block names
+    ba_trajdf_path = os.path.join(runs_dir, model_name, 'Data_Frame', 'ba_trajdf.h5')
+    with pd.HDFStore(ba_trajdf_path, mode='r') as store:
+        saved_block_names = store.select_column('trajdf', 'index').values
     ##########################################################################
     # inits
-    saved_block_names = database.get_saved_block_names()
     saved_blocks = [int(block_name) for block_name in saved_block_names]
-    num_train_doc_ids = load_corpus_data(database.model_name, 'num_train_doc_ids')
-    num_reps = int(load_configs_dict(database.model_name)['num_reps'])
-    num_iterations = int(load_configs_dict(database.model_name)['num_iterations'])
-    save_ev = int(load_configs_dict(database.model_name)['save_ev'])
+    num_train_doc_ids = load_corpus_data(model_name, 'num_train_doc_ids')
+    num_reps = int(load_configs_dict(model_name)['num_reps'])
+    num_iterations = int(load_configs_dict(model_name)['num_iterations'])
+    save_ev = int(load_configs_dict(model_name)['save_ev'])
     num_epochs = num_reps / num_iterations
     stop_block = num_train_doc_ids * num_epochs
     save_ev_block = save_ev * num_epochs
@@ -648,7 +653,7 @@ def calc_hca(database, acts_cols, cat_col, epochs=30):
     return train_hca, test_hca
 
 
-def calc_ba_list(database, num_ba_samples, ba_method='prototype', thr_step=0.001):
+def calc_ba_list(database, num_ba_samples, ba_method='exemplar', thr_step=0.001):
     ##########################################################################
     print 'Calculating balanced accuracy...'
     ##########################################################################
@@ -707,16 +712,9 @@ def calc_ba_list(database, num_ba_samples, ba_method='prototype', thr_step=0.001
     probe_ba_list = np.multiply(ba_mat[:, best_token_ba_mat_col_id], 100).tolist()
     ##########################################################################
     # make avg_probe_ba_list
-
-
-    print 'sampled_probes_list'
-    print len(sampled_probes_list)
-    print 'probe_ba_list'
-    print len(probe_ba_list)
-
     avg_probe_ba_list = pd.DataFrame(
         data={'probe': sampled_probes_list,
-              'token_ba': probe_ba_list}).groupby('probe').mean()['token_ba'].values.tolist()
+              'probe_ba': probe_ba_list}).groupby('probe').mean()['probe_ba'].values.tolist()
     ##########################################################################
     # save confusion data
     cat_confusion_mat_data = cat_confusion_mat_data_list[best_token_ba_mat_col_id]
@@ -730,12 +728,12 @@ def calc_ba_list(database, num_ba_samples, ba_method='prototype', thr_step=0.001
     return probe_ba_list, avg_probe_ba_list, sampled_probes_list
 
 
-def calc_probe_sim_mat(all_acts_df):  # TODO get rid of any nesting
+def calc_probe_sim_mat(probes_acts_df):
     ##########################################################################
     print 'Calculating probe simmat...'
     ##########################################################################
     # calc sim mat
-    probe_simmat = all_acts_df.T.corr().values
+    probe_simmat = probes_acts_df.T.corr().values
     nan_ids = np.where(np.isnan(probe_simmat).all(axis=1))[0]
     assert len(nan_ids) == 0
     ##########################################################################
@@ -745,7 +743,8 @@ def calc_probe_sim_mat(all_acts_df):  # TODO get rid of any nesting
 def calc_cat_sim_mat(database):
     ##########################################################################
     # probe simmat
-    probe_simmat, _ = calc_probe_sim_mat(database)
+    probes_acts_df = database.get_probes_acts_df()
+    probe_simmat = calc_probe_sim_mat(probes_acts_df)
     ##########################################################################
     # inits
     num_probes = len(database.probe_list)
@@ -961,7 +960,7 @@ def calculate_dprime(hits, misses, fas, crs):
 
 def get_block_name_from_request(request, arg, block_names1):
     ##########################################################################
-    if request.args.get('complete') == 'traj':
+    if request.args.get(arg) == 'traj':
         block_name1 = block_names1[-1]
     else:
         block_name1 = request.args.get(arg)
@@ -1017,10 +1016,49 @@ def plot_best_fit_line(ax, xys, fontsize, color='red', linewidth=2.0, zorder=3, 
     xl = [min(x), max(x)]
     yl = [slope * xx + intercept for xx in xl]
     ax.plot(xl, yl, linewidth=linewidth, c=color, zorder=zorder)
-    ########################################################################## # TODO why does x-pos not work here?
+    ##########################################################################
     # plot rsqrd
     variance = np.var(y)
     residuals = np.var([(slope * xx + intercept - yy) for xx, yy in zip(x, y)])
     Rsqr = np.round(1 - residuals / variance, decimals=4)
     if Rsqr > 0.5: fontsize += 5
     ax.text(x_pos, y_pos, '$R^2$ = {}'.format(Rsqr), transform=ax.transAxes, fontsize=fontsize)
+
+
+def make_btn_name_desc_dict():
+    ##########################################################################
+    # parse buttons.txt
+    btn_name_desc_tuple = []
+    btn_name_list = []
+    with open(os.path.join('static', 'buttons.txt'), 'r') as f:
+        for line in f.readlines():
+            if not line.startswith('#'):
+                btn_name = line.split()[0]
+                desc = ' '.join(line.split()[1:-1]).strip("'")
+                is_block = line.split()[-1]  # TODO
+                btn_name_list.append(btn_name)
+                btn_name_desc_tuple.append((btn_name, desc))
+    ##########################################################################
+    # make dict
+    btn_name_desc_dict = {btn: desc for btn, desc in btn_name_desc_tuple}
+    ##########################################################################
+    # top and bottom
+    btn_names_top = btn_name_list[:8]
+    btn_names_bottom = btn_name_list[8:]
+    ##########################################################################
+    return btn_name_desc_dict, btn_names_top, btn_names_bottom
+
+
+# TODO can i pass fewer variables?
+def load_database_and_img_desc(model_name, request, btn_name):
+    ##########################################################################
+    start = time.time()
+    btn_name_desc_dict, btn_names_top, btn_names_bottom = make_btn_name_desc_dict()
+    block_names1 = make_block_names1(model_name)
+    block_name = get_block_name_from_request(request, btn_name, block_names1)
+    database = load_database(model_name, block_name)
+    desc = btn_name_desc_dict[btn_name]
+    imgs_desc = '{} {}'.format(desc, block_name)
+    print 'Loaded database and img_desc in {} secs'.format(time.time() - start)
+    ##########################################################################
+    return database, imgs_desc

@@ -13,7 +13,7 @@ class Corpus(object):
     """
 
     def __init__(self, corpus_name, block_order, num_epochs, mb_size, bptt_steps,
-                 vocab_file_name, freq_cutoff, probes_name):
+                 num_mbs_in_doc, vocab_file_name, freq_cutoff, probes_name):
         ##########################################################################
         # define data dir
         self.data_dir = os.path.join(os.path.dirname(__file__), 'data')
@@ -27,7 +27,7 @@ class Corpus(object):
         self.probes_name = probes_name # list of tokens to use for analysis after training
         ##########################################################################
         # make instance variables
-        self.num_mbs_in_doc = 20  # TODO make this part of user configs
+        self.num_mbs_in_doc = num_mbs_in_doc
         self.doc_token_lists, self.num_total_docs = self.make_doc_token_lists(mb_size, bptt_steps)
         self.test_doc_ids, self.train_doc_ids = self.split_corpus()
         self.num_train_doc_ids, self.num_test_doc_ids = len(self.train_doc_ids), len(self.test_doc_ids)
@@ -66,7 +66,7 @@ class Corpus(object):
         ##########################################################################
         # split corpus into train and test
         num_train_docs = None
-        for divisor in [10000, 1000, 100, 10]:
+        for divisor in [100, 10]:
             num_train_docs = self.num_total_docs - (self.num_total_docs % divisor)
             if num_train_docs > 1:
                 break

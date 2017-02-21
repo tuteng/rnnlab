@@ -10,7 +10,9 @@ dog freqhist
 mom freqhist
 infant freqhist
 #
-plant custompdh
+one custompdh
+two custompdh
+three custompdh
 #
 dog customn
 mom customn
