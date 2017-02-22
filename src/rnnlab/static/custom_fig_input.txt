@@ -18,3 +18,6 @@ banana c_neighbors
 shoe c_neighbors
 bed c_neighbors
 jupiter c_neighbors
+#
+dog comp2models
+day comp2models

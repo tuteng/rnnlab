@@ -15,7 +15,7 @@ from utils import load_custom_fig_input
 from utils import load_filtered_log_entries
 from utils import make_block_names2_dict
 from utils import load_database
-from utils import block_to_iteration
+from utils import block_to_mb
 from utils import load_rnnlabrc
 from utils import complete_phrase
 from utils import get_block_name_from_request
@@ -62,7 +62,7 @@ runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 app = Flask(__name__)
 btn_name_desc_dict, btn_names_top, btn_names_bottom = make_btn_name_desc_dict()
 app_headers = load_app_headers()
-
+version = 'dev'
 
 @app.route('/', methods=['GET', 'POST'])
 def log():
@@ -135,11 +135,13 @@ def model(model_name1):
     ##########################################################################
     template_dict = {key: value for key, value in
                      zip(['version', 'hostname', 'log_mtime'],
-                         ['dev', socket.gethostname(), get_log_mtime()])}
+                         [version, socket.gethostname(), get_log_mtime()])}
     ##########################################################################
     # get model_names2 and block_names2_dict
     block_names1 = make_block_names1(model_name1)
+    start = time.time()
     model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)  # TODO
+    print 'Made blockname2dict in {}secs'.format(int(time.time() - start))
     #########################################################################
     if request.args.get('delete') is not None:
         if 'yes' == raw_input('Enter yes to delete {} :\n'.format(model_name1)):
@@ -228,27 +230,26 @@ def model(model_name1):
         database1 = load_database(model_name1, block_name1)
         database2 = load_database(model_name2, block_name2)
         databases = [database1, database2]
-        iteration = block_to_iteration(model_name1, block_name1)
-        imgs_desc = 'Model Comparison Iteration {}'.format(iteration)
+        mb = block_to_mb(model_name1, block_name1)
+        imgs_desc = 'Model Comparison at Minibatch {:,}'.format(mb)
         num_comparisons = 2
         palette = cycle(Category10[max(3,num_comparisons)][:num_comparisons])
         fig_tuple1 = (make_ba_bds_fig(databases, palette), 'mpl')
         fig_tuple2 = (make_probes_ba_traj_fig(databases, palette), 'mpl')
         fig_tuple3 = (make_test_pp_traj_fig(databases, palette), 'mpl')
         fig_tuple4 = (make_probe_sim_comp_fig(databases, palette), 'mpl')
-        custom_fig_input = load_custom_fig_input()
-        custom_probes = [tuple[0] for tuple in custom_fig_input if tuple[1] == 'customn']
-        fig_tuple5 = (make_neighbors_rbo_fig(databases, custom_probes), 'bokeh')
-        fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
-        fig_tuple7 = (make_num_clusters_ba_diff_corr_fig(databases), 'mpl')
-        fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(databases), 'mpl')
-        fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(databases), 'mpl')
+        probes = load_custom_fig_input('comp2models')
+        # fig_tuple5 = (make_neighbors_rbo_fig(databases, probes), 'bokeh')
+        # fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
+        # fig_tuple7 = (make_num_clusters_ba_diff_corr_fig(databases), 'mpl')
+        # fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(databases), 'mpl')
+        # fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(databases), 'mpl')
         fig_tuples = []
-        for cat in database.cat_list:
-            fig_tuples.append((make_cat_token_ba_comp_fig(databases, cat), 'mpl'))
+        # for cat in database1.cat_list:
+        # fig_tuples.append((make_cat_token_ba_comp_fig(databases, cat), 'mpl'))
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3,
-                         fig_tuple4, fig_tuple5, fig_tuple6, fig_tuple7,
-                         fig_tuple8, fig_tuple9, *fig_tuples)
+                         fig_tuple4)  # , fig_tuple5, fig_tuple6, fig_tuple7,
+        # fig_tuple8, fig_tuple9) #, *fig_tuples)
     ##########################################################################
     elif request.args.get('comp_trajs') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'comp_trajs')

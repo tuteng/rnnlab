@@ -79,10 +79,6 @@ class RNN():
         self.num_ba_samples = int(self.configs_dict['num_ba_samples'])
         self.probes_ba_list = []
 
-        print
-        print 'stop_block_name'
-        print self.stop_block_name  # TODO
-        print
 
     def train(self):
         ##########################################################################
@@ -143,8 +139,7 @@ class RNN():
         #########################################################################
         # update log with best_probes_ba and completed
         best_probes_ba = max(self.probes_ba_list)
-        completed = 1 if self.stop_block_name == block_name else 0
-        self.update_log(best_probes_ba, completed)
+        self.update_log(best_probes_ba=best_probes_ba)
 
 
     def make_analysis_list(self, database):
@@ -306,15 +301,14 @@ class RNN():
         all_params_list.append('0')  # best_token_ba
         writer.writerow(all_params_list)
 
-
-    def update_log(self, best_avg_token_ba, completed):
+    def update_log(self, best_probes_ba=None, completed=None):
         ##########################################################################
         log_content = csv.reader(open(self.log_path, 'r'))
         log_content_new = []
         for row in log_content:
             if row[0] == self.model_name:
-                row[-1] = format(best_avg_token_ba, '.3f')
-                row[-2] = int(completed)
+                if best_probes_ba is not None: row[-1] = format(best_probes_ba, '.3f')
+                if completed is not None: row[-2] = int(completed)
             log_content_new.append(row)
         with open(self.log_path, 'w') as f:
             writer = csv.writer(f)
@@ -329,8 +323,13 @@ class RNN():
         print '{} |Block Name: {}/{} Id: {:>4} |Batch: {:>10} |Elapsed: {:>2} hrs'.format(
             self.model_name, block_name, self.corpus.num_total_train_docs, block_id, num_mbs_trained, hours)
 
+
     def complete_training(self):
         ##########################################################################
+        # update log
+        self.update_log(completed=1)
+        ##########################################################################
+        # close session
         self.rnn_graph.sess.close()
         tf.reset_default_graph()
         print '{} Training Session Closed and Graph reset\n\n'.format(self.model_name)

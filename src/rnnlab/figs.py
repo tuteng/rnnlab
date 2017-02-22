@@ -24,10 +24,10 @@ from utils import make_cat_conf_mat
 from utils import calc_probe_sim_mat
 from utils import calc_cat_sim_mat
 from utils import gen_neighbor_name_and_sim
-from utils import load_num_synsets
 from utils import calc_num_probe_acts_clusters
 from utils import plot_best_fit_line
-from utils import block_to_iteration
+from utils import block_to_mb
+from utils import human_format
 
 from database import load_rnnlabrc
 runs_dir = load_rnnlabrc('runs_dir')
@@ -105,7 +105,7 @@ def make_token_acts_avg_act_corr_fig(databases, probe):
         traj_mat_ax1[:, n] = [np.corrcoef(token_act, last_avg_cat_act)[1, 0] for token_act in token_acts_mat]
     xys_ax0, xys_ax1 = [], []
     for row_ax0, row_ax1 in zip(traj_mat_ax0, traj_mat_ax1):
-        x = databases[-1].get_train_iterations_axis()
+        x = databases[-1].get_mbs_axis()
         y = row_ax0
         xys_ax0.append((x, y))
         y = row_ax1
@@ -122,11 +122,11 @@ def make_token_acts_avg_act_corr_fig(databases, probe):
             ax.set_ylabel('Corr with last avg act of "{}"'.format(probe), fontsize=ax_font_size)
         else:
             ax.set_ylabel('Corr with last avg act of {}'.format(cat), fontsize=ax_font_size)
-        ax.set_xlabel('Training Iterations', fontsize=ax_font_size)
+        ax.set_xlabel('Number of Batches', fontsize=ax_font_size)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='both', top='off', right='off')
-        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+        ax.xaxis.set_major_formatter(FuncFormatter(human_format))
         ax.set_ylim([0, 1])
     ##########################################################################
     # plot
@@ -142,27 +142,31 @@ def make_token_acts_avg_act_corr_fig(databases, probe):
 
 
 def make_custom_neighbors_table_fig(database, probes, num_neighbors=10,
-                                    num_trunc_cols=3):  # TODO this can be simplified
+                                    num_trunc_cols=3):
     ##########################################################################
     # load data
     probes_acts_df = database.get_probes_acts_df()
     probe_simmat = calc_probe_sim_mat(probes_acts_df)
+    ##########################################################################
+    # make neighbors_mat
     neighbors_mat_list = []
     col_labels_list = []
-    sim_tuples_list_list = []
-    for row_id, row in enumerate(probe_simmat):
-        sim_tuples_list_list.append([(target, sim) for target, sim in zip(database.probe_list, row)])
-    for i in range(0, len(probes), num_trunc_cols):  # split sel_probes into even sized lists
+    for i in range(0, len(probes), num_trunc_cols):  # split probes into even sized lists
         truncated_col_labels = probes[i:i + num_trunc_cols]
         neighbors_mat = np.chararray((num_neighbors, num_trunc_cols), itemsize=20)
-        neighbors_mat[:] = ''  # initialize so that matplotlib can read table
-        for probe_id, probe in enumerate(truncated_col_labels):
-            neighbors_for_probe = sorted(sim_tuples_list_list[database.probe_id_dict[probe]], key=itemgetter(1),
-                                         reverse=True)
-            generator = gen_neighbor_name_and_sim(neighbors_for_probe)
-            for neighbors_id in range(num_neighbors):
-                neighbor_name, neighbor_sim = next(generator)
-                neighbors_mat[neighbors_id, probe_id] = '{:>15} {:.2f}'.format(neighbor_name, neighbor_sim)
+        neighbors_mat[:] = ''  # initialize so that mpl can read table
+        ##########################################################################
+        # make column
+        for col_id, probe in enumerate(truncated_col_labels):
+            probe_id = database.probe_id_dict[probe]
+            neighbor_tuples_list = [(probe_, sim) for probe_, sim in zip(database.probe_list, probe_simmat[probe_id])
+                                    if probe_ != probe]
+            neighbor_tuples = sorted(neighbor_tuples_list, key=itemgetter(1), reverse=True)[:num_neighbors]
+            neighbors_mat_col = ['{:>15} {:.2f}'.format(tuple[0], tuple[1])
+                                 for tuple in neighbor_tuples if tuple[0] != probe]
+            neighbors_mat[:, col_id] = neighbors_mat_col
+        ##########################################################################
+        # collect info for plotting
         neighbors_mat_list.append(neighbors_mat)
         length_diff = num_trunc_cols - len(truncated_col_labels)
         for i in range(length_diff): truncated_col_labels.append(' ')  # add space so table can be read properly
@@ -172,7 +176,7 @@ def make_custom_neighbors_table_fig(database, probes, num_neighbors=10,
     table_fontsize = 6
     num_tables = len(neighbors_mat_list)
     figsize = (3.0, 4)
-    fig, axarr = plt.subplots(num_tables, 1, figsize=tuple(figsize))
+    fig, axarr = plt.subplots(num_tables, 1, figsize=figsize)
     ##########################################################################
     # ax
     for n, neighbors_mat in enumerate(neighbors_mat_list):
@@ -194,23 +198,27 @@ def make_neighbors_table_fig(database, cat, num_neighbors=10, num_trunc_cols=5):
     # load data
     probes_acts_df = database.get_probes_acts_df()
     probe_simmat = calc_probe_sim_mat(probes_acts_df)
-    col_labels = database.cat_probe_list_dict[cat]
+    probes = database.cat_probe_list_dict[cat]
+    ##########################################################################
+    # make neighbors_mat
     neighbors_mat_list = []
     col_labels_list = []
-    sim_tuples_list_list = []
-    for row_id, row in enumerate(probe_simmat):
-        sim_tuples_list_list.append([(target, sim) for target, sim in zip(database.probe_list, row)])
-    for i in range(0, len(col_labels), num_trunc_cols):  # split col_labels into even sized lists
-        truncated_col_labels = col_labels[i:i + num_trunc_cols]
+    for i in range(0, len(probes), num_trunc_cols):  # split probes into even sized lists
+        truncated_col_labels = probes[i:i + num_trunc_cols]
         neighbors_mat = np.chararray((num_neighbors, num_trunc_cols), itemsize=20)
-        neighbors_mat[:] = ''  # initialize so that matplotlib can read table
-        for probe_id, probe in enumerate(truncated_col_labels):
-            neighbors_for_probe = sorted(sim_tuples_list_list[database.probe_id_dict[probe]], key=itemgetter(1),
-                                         reverse=True)
-            generator = gen_neighbor_name_and_sim(neighbors_for_probe)
-            for neighbors_id in range(num_neighbors):
-                neighbor_name, neighbor_sim = next(generator)
-                neighbors_mat[neighbors_id, probe_id] = '{:>15} {:.2f}'.format(neighbor_name, neighbor_sim)
+        neighbors_mat[:] = ''  # initialize so that mpl can read table
+        ##########################################################################
+        # make column
+        for col_id, probe in enumerate(truncated_col_labels):
+            probe_id = database.probe_id_dict[probe]
+            neighbor_tuples_list = [(probe_, sim) for probe_, sim in zip(database.probe_list, probe_simmat[probe_id])
+                                    if probe_ != probe]
+            neighbor_tuples = sorted(neighbor_tuples_list, key=itemgetter(1), reverse=True)[:num_neighbors]
+            neighbors_mat_col = ['{:>15} {:.2f}'.format(tuple[0], tuple[1])
+                                 for tuple in neighbor_tuples if tuple[0] != probe]
+            neighbors_mat[:, col_id] = neighbors_mat_col
+        ##########################################################################
+        # collect info for plotting
         neighbors_mat_list.append(neighbors_mat)
         length_diff = num_trunc_cols - len(truncated_col_labels)
         for i in range(length_diff): truncated_col_labels.append(' ')  # add space so table can be read properly
@@ -222,7 +230,7 @@ def make_neighbors_table_fig(database, cat, num_neighbors=10, num_trunc_cols=5):
     hcell, wcell = 0.3, 2.5
     hpad, wpad = 0.1, 0
     figsize = (ncols * wcell + wpad, (nrows * hcell + hpad) * num_tables)
-    fig, axarr = plt.subplots(num_tables, 1, figsize=tuple(figsize))
+    fig, axarr = plt.subplots(num_tables, 1, figsize=figsize)
     fig.suptitle('Neighbors for probes in {}'.format(cat))
     ##########################################################################
     # ax
@@ -776,7 +784,7 @@ def make_avg_probe_ba_trajs_fig(database, probes):
     linewidth = 2.0
     ##########################################################################
     # fig
-    hover = HoverTool(tooltips=[('iteration', '@x'), ('probe', '@probe'), ('balAcc', '@y')])
+    hover = HoverTool(tooltips=[('batch', '@x'), ('probe', '@probe'), ('balAcc', '@y')])
     fig = figure(plot_width=figsize[0], plot_height=figsize[1],
                  tools=[hover, 'pan, wheel_zoom, crosshair, save'])
     ##########################################################################
@@ -784,7 +792,7 @@ def make_avg_probe_ba_trajs_fig(database, probes):
     fig.y_range = Range1d(0, 100)
     ##########################################################################
     # plot
-    x = database.get_train_iterations_axis()
+    x = database.get_mbs_axis()
     for n, y in enumerate(avg_probe_ba_trajs_mat):
         source = ColumnDataSource(data=dict(x=x, y=y, probe=[probes[n]] * len(x)))
         fig.line(x='x', y='y', line_color=next(palette), line_width=linewidth, source=source)
@@ -809,7 +817,7 @@ def make_avg_probe_pp_trajs_fig(database, probes):
     linewidth = 2.0
     ##########################################################################
     # fig
-    hover = HoverTool(tooltips=[('iteration', '@x'), ('probe', '@probe'), ('perp', '@y')])
+    hover = HoverTool(tooltips=[('batch', '@x'), ('probe', '@probe'), ('perp', '@y')])
     fig = figure(plot_width=figsize[0], plot_height=figsize[1],
                  tools=[hover, 'pan, wheel_zoom, crosshair, save'])
     ##########################################################################
@@ -817,7 +825,7 @@ def make_avg_probe_pp_trajs_fig(database, probes):
     fig.y_range = Range1d(0, max_y)
     ##########################################################################
     # plot
-    x = database.get_train_iterations_axis()
+    x = database.get_mbs_axis()
     for n, y in enumerate(avg_probe_pp_trajs_mat):
         source = ColumnDataSource(data=dict(x=x, y=y, probe=[probes[n]] * len(x)))
         fig.line(x='x', y='y', line_color=next(palette), line_width=linewidth, source=source)
@@ -831,7 +839,7 @@ def make_cfreq_traj_fig(database, probes):
     probe_cf_traj_dict = database.probe_cf_traj_dict
     xys = []
     for probe in probes:
-        x = database.get_train_iterations_axis()[1:]
+        x = database.get_mbs_axis()[1:]
         y = probe_cf_traj_dict[probe][:len(x)] # y does not take iterations into account
         if x:
             last_y, last_x = y[-1], x[-1]
@@ -858,7 +866,7 @@ def make_cfreq_traj_fig(database, probes):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.xaxis.set_major_formatter(FuncFormatter(human_format))
     ##########################################################################
     # plot
     for (x, y, last_x, last_y, probe) in xys:
@@ -891,7 +899,7 @@ def make_ba_pp_window_corr_fig(trajdatabase, window=20):
     ##########################################################################
     # axis
     ax.set_ylim([-1, 1])
-    ax.set_xlabel('Training Iteration', fontsize=ax_font_size)
+    ax.set_xlabel('Number of Batches', fontsize=ax_font_size)
     ax.set_ylabel('Correlation', fontsize=ax_font_size)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
@@ -902,9 +910,9 @@ def make_ba_pp_window_corr_fig(trajdatabase, window=20):
     ax.axhline(y=0, linestyle='--', c='gray', linewidth=linewidth)
     ##########################################################################
     # plot
-    ax.plot(trajdatabase.get_train_iterations_axis(), ba_pp_mw_corr, '-', linewidth=linewidth,
+    ax.plot(trajdatabase.get_mbs_axis(), ba_pp_mw_corr, '-', linewidth=linewidth,
             label='mw-corr ({} blocks) between balAcc and test-pp'.format(window))
-    ax.plot(trajdatabase.get_train_iterations_axis(), ba_pp_ew_corr, '-', linewidth=linewidth,
+    ax.plot(trajdatabase.get_mbs_axis(), ba_pp_ew_corr, '-', linewidth=linewidth,
             label='ew-corr between balAcc and test-pp')
     ##########################################################################
     ax.legend(fontsize=leg_font_size, loc='best')
@@ -926,7 +934,7 @@ def make_comp_probes_ba_fig(database, probe_tuples):
         y, std, n = df.mean(), df.std(), len(df)
         se = std / (n ** 0.5)
         ci = se * scipy.stats.t._ppf((1 + 0.95) / 2., n - 1)
-        x = database.get_train_iterations_axis()
+        x = database.get_mbs_axis()
         xys.append((x, y, ci, probe_class, n))
     ##########################################################################
     # seaborn
@@ -943,12 +951,12 @@ def make_comp_probes_ba_fig(database, probe_tuples):
     ##########################################################################
     # axis
     ax.set_ylim([40, 100])
-    ax.set_xlabel('Training iteration', fontsize=ax_font_size)
+    ax.set_xlabel('Number of Batches', fontsize=ax_font_size)
     ax.set_ylabel('Balanced Accuracy', fontsize=ax_font_size)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.xaxis.set_major_formatter(FuncFormatter(human_format))
     ##########################################################################
     # plot
     for (x, y, ci, probe_class, n) in xys:
@@ -1024,7 +1032,7 @@ def make_probes_ba_traj_fig(databases, palette):
     for database in databases:
         print database.model_name
         avg_token_ba_traj = database.get_traj('probes_ba')
-        x = database.get_train_iterations_axis()
+        x = database.get_mbs_axis()
         y = avg_token_ba_traj
         xys.append((x, y))
     ##########################################################################
@@ -1040,12 +1048,12 @@ def make_probes_ba_traj_fig(databases, palette):
     ##########################################################################
     # axis
     ax.set_ylim([50, 75])
-    ax.set_xlabel('Training Iteration', fontsize=ax_font_size)
+    ax.set_xlabel('Number of Batches', fontsize=ax_font_size)
     ax.set_ylabel('Mean Balanced Accuracy', fontsize=ax_font_size)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.xaxis.set_major_formatter(FuncFormatter(human_format))
     ax.yaxis.grid(True)
     ##########################################################################
     # plot
@@ -1065,7 +1073,7 @@ def make_test_pp_traj_fig(databases, palette):
     xys = []
     for database in databases:
         test_pp_traj = database.get_traj('test_pp')
-        x = database.get_train_iterations_axis()
+        x = database.get_mbs_axis()
         y = test_pp_traj
         xys.append((x, y))
     ##########################################################################
@@ -1085,8 +1093,8 @@ def make_test_pp_traj_fig(databases, palette):
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.set_xlabel('Training Iteration', fontsize=ax_font_size)
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.set_xlabel('Number of Batches', fontsize=ax_font_size)
+    ax.xaxis.set_major_formatter(FuncFormatter(human_format))
     ax.yaxis.grid(True)
     ##########################################################################
     # plot
@@ -1106,7 +1114,7 @@ def make_probe_pp_traj_fig(databases, palette):
     xys = []
     for database in databases:
         probes_pp_traj = database.get_traj('probes_pp')
-        x = database.get_train_iterations_axis()
+        x = database.get_mbs_axis()
         y = probes_pp_traj
         xys.append((x, y))
     ##########################################################################
@@ -1126,8 +1134,8 @@ def make_probe_pp_traj_fig(databases, palette):
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.set_xlabel('Training Iteration', fontsize=ax_font_size)
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.set_xlabel('Number of Batches', fontsize=ax_font_size)
+    ax.xaxis.set_major_formatter(FuncFormatter(human_format))
     ax.yaxis.grid(True)
     ##########################################################################
     # plot
@@ -1149,7 +1157,8 @@ def make_probe_sim_comp_fig(databases, palette, num_bins = 1000, num_samples=100
     probe_simmat_values_list,model_names = [], []
     for database in databases:
         model_names.append(database.model_name)
-        probe_simmat, _ = calc_probe_sim_mat(database)
+        probes_acts_df = database.get_probes_acts_df()
+        probe_simmat = calc_probe_sim_mat(probes_acts_df)
         probe_simmat[np.tril_indices(probe_simmat.shape[0], -1)] = np.nan
         probe_simmat_values = probe_simmat[~np.isnan(probe_simmat)]
         probe_simmat_values_list.append(probe_simmat_values)
@@ -1217,7 +1226,8 @@ def make_neighbors_rbo_fig(databases, probes, num_neighbors=10):
     # load data
     neighbors_dict = {probe: [] for probe in probes}
     for database in databases:
-        probe_simmat, _ = calc_probe_sim_mat(database)
+        probes_acts_df = database.get_probes_acts_df()
+        probe_simmat = calc_probe_sim_mat(probes_acts_df)
         for probe_id, probe in enumerate(probes):
             sim_tuples_unsorted = [(target, sim) for target, sim in zip(database.probe_list, probe_simmat[probe_id])]
             neighbors_tuples = sorted(sim_tuples_unsorted, key=itemgetter(1), reverse=True)
@@ -1485,7 +1495,7 @@ def make_probe_freq_hist_fig(database, probes):
     # load data
     xys = []
     for probe in probes:
-        x = database.get_train_iterations_axis()[2:]  # -1 because of np.diff, -1 because no cf data stored zero block
+        x = database.get_mbs_axis()[2:]  # -1 because of np.diff, -1 because no cf data stored zero block
         y = np.diff(database.probe_cf_traj_dict[probe], 1)[:len(x)]
         xys.append((x, y, probe))
     ##########################################################################
@@ -1529,7 +1539,7 @@ def make_comp_binned_freqs_fig(trajdatabase, probe_tuples):
     ys_ = []
     for probe_class, group in groupby(probe_tuples, itemgetter(1)):
         probes = [i[0] for i in list(group)]
-        x = trajdatabase.get_train_iterations_axis()[:-1]  # cut short because of diff
+        x = trajdatabase.get_mbs_axis()[:-1]  # cut short because of diff
         for probe in probes:
             y_ = np.hstack((np.zeros(1), np.diff(trajdatabase.probe_cf_traj_dict[probe], 1)))[:len(x)]
             ys_.append(y_)
@@ -1558,7 +1568,7 @@ def make_comp_binned_freqs_fig(trajdatabase, probe_tuples):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:,d}'.format(int(x))))
+    ax.xaxis.set_major_formatter(FuncFormatter(human_format))
     ##########################################################################
     # plot
     if len(y) == 1:

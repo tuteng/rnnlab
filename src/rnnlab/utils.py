@@ -25,7 +25,7 @@ from database import load_rnnlabrc
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
 
-def gen_neighbor_name_and_sim(neighbors_for_probe):
+def gen_neighbor_name_and_sim(neighbors_for_probe):  # TODO get rid of this
     ##########################################################################
     # generate neighbors_name, neighbors_sim
     num_total_neighbors = len(neighbors_for_probe)
@@ -322,14 +322,15 @@ def make_block_names1(model_name, num_blocks=5):
     return block_names1
 
 
-def block_to_iteration(model_name, block_name):
+def block_to_mb(model_name, block_name):  # TODO update everywhere to mb instead of iteration
     ##########################################################################
     # get configs_dict
     configs_dict = load_configs_dict(model_name)
     num_iterations = int(configs_dict['num_iterations'])
-    iteration = int(block_name) * num_iterations
+    num_mbs_in_doc = int(configs_dict['num_mbs_in_doc'])
+    mb = int(block_name) * num_iterations * num_mbs_in_doc
     ##########################################################################
-    return iteration
+    return mb
 
 
 def make_block_names2_dict(model_name1, block_names1, limit_to_same_flavor=False):
@@ -345,17 +346,17 @@ def make_block_names2_dict(model_name1, block_names1, limit_to_same_flavor=False
     ##########################################################################
     # make block_names2_dict
     block_names2_dict = {}
-    for model_name2 in model_names2:
+    for model_name2 in model_names2:  # TODO can i make this faster?
         ##########################################################################
-        # get block_names2 (comparable blocks t block_names1 with respect to iterations)
+        # get block_names2
         block_names2 = []
         database = load_database(model_name2)
         saved_block_names2 = database.get_saved_block_names()
         for saved_block_name2 in saved_block_names2:
-            iteration2 = block_to_iteration(model_name2, saved_block_name2)
+            mb2 = block_to_mb(model_name2, saved_block_name2)
             for block_name1 in block_names1:
-                iteration1 = block_to_iteration(model_name1, block_name1)
-                if iteration2 == iteration1:
+                mb1 = block_to_mb(model_name1, block_name1)
+                if mb2 == mb1:
                     block_names2.append(saved_block_name2)
                     continue
         ##########################################################################
@@ -1075,3 +1076,13 @@ def load_app_headers():
                 app_headers.append(app_header)
     ##########################################################################
     return app_headers
+
+
+def human_format(num, pos):  # pos is required for formatting mpl axis ticklabels
+    ##########################################################################
+    magnitude = 0
+    while abs(num) >= 1000:
+        magnitude += 1
+        num /= 1000.0
+    ##########################################################################
+    return '{}{}'.format(num, ['', 'K', 'M', 'G', 'T', 'P'][magnitude])

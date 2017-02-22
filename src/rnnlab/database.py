@@ -25,6 +25,7 @@ class DataBase:
         self.configs_dict = configs_dict
         self.model_name = configs_dict['model_name']
         self.num_iterations = int(configs_dict['num_iterations'])
+        self.num_mbs_in_doc = int(configs_dict['num_mbs_in_doc'])
         self.block_name = block_name
         self.df = df
         ##########################################################################
@@ -223,7 +224,7 @@ class DataBase:
         ##########################################################################
         if num_ba_samples != 0:
             ##########################################################################
-            print 'Using first {} probe activations to calc balanced accuracy...'.format(num_ba_samples)
+            print 'Using first {} probe activations...'.format(num_ba_samples)
             ##########################################################################
             # make probes_acts_df
             sampled_probes_list, acts_mat_list = [], []
@@ -240,17 +241,18 @@ class DataBase:
             probes_acts_df = pd.DataFrame(data=all_acts_mat, index=sampled_probes_list)
         else:
             ##########################################################################
-            print 'Collapsing all probe activtions to calculate balanced accuracy...'
+            print 'Collapsing all probe activtions...'
             ##########################################################################
             probes_acts_df = self.df.groupby('probe', sort=True).mean().filter(regex='H')
         ##########################################################################
         return probes_acts_df
 
-    def get_train_iterations_axis(self):
+    def get_mbs_axis(self):
         ##########################################################################
         with pd.HDFStore(self.ba_trajdf_path, mode='r') as store:
             saved_block_names = store.select_column('trajdf', 'index').values
-        xaxis = map(lambda x: int(x) * self.num_iterations, [i for i in saved_block_names])
+        xaxis = map(lambda b: int(b) * self.num_iterations * self.num_mbs_in_doc,
+                    [b for b in saved_block_names])
         ##########################################################################
         return xaxis
 
