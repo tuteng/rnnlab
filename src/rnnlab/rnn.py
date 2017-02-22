@@ -79,6 +79,10 @@ class RNN():
         self.num_ba_samples = int(self.configs_dict['num_ba_samples'])
         self.probes_ba_list = []
 
+        print
+        print 'stop_block_name'
+        print self.stop_block_name  # TODO
+        print
 
     def train(self):
         ##########################################################################
@@ -325,22 +329,7 @@ class RNN():
         print '{} |Block Name: {}/{} Id: {:>4} |Batch: {:>10} |Elapsed: {:>2} hrs'.format(
             self.model_name, block_name, self.corpus.num_total_train_docs, block_id, num_mbs_trained, hours)
 
-
-    def send_data_to_web_app(self):
-        ##########################################################################
-        pass
-
-
-    def complete_training(self, remove_dfs=False):
-        ##########################################################################
-        # send data to web app
-        self.send_data_to_web_app()
-        ##########################################################################
-        # delete dfs to save space, if specified
-        if remove_dfs:
-            path = os.path.join(self.runs_dir, self.model_name, 'Data_Frame')
-            for file_name in sorted(os.listdir(path))[:-1]:
-                os.remove(os.path.join(path, file_name))
+    def complete_training(self):
         ##########################################################################
         self.rnn_graph.sess.close()
         tf.reset_default_graph()

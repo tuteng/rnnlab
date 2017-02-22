@@ -21,6 +21,7 @@ from utils import complete_phrase
 from utils import get_block_name_from_request
 from utils import make_btn_name_desc_dict
 from utils import load_database_and_img_desc
+from utils import load_app_headers
 
 from figs import make_neighbors_rbo_fig
 from figs import make_custom_neighbors_table_fig
@@ -60,17 +61,14 @@ from figs import make_probe_ba_vs_pp_fig
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 app = Flask(__name__)
 btn_name_desc_dict, btn_names_top, btn_names_bottom = make_btn_name_desc_dict()
-
-
-headers_to_display = ['model_name', 'block_order', 'num_ba_samples',
-                      'bptt_steps', 'completed', 'best_probes_ba']  # TODO make this into txt file too
+app_headers = load_app_headers()
 
 
 @app.route('/', methods=['GET', 'POST'])
 def log():
     ##########################################################################
     # get log entries
-    log_entries, headers = load_filtered_log_entries(headers_to_display)
+    log_entries, headers = load_filtered_log_entries(app_headers)
     if not log_entries:
         headers = 'Log is empty'.split()
     ##########################################################################
@@ -140,9 +138,7 @@ def model(model_name1):
                          ['dev', socket.gethostname(), get_log_mtime()])}
     ##########################################################################
     # get model_names2 and block_names2_dict
-    block_names1 = make_block_names1(model_name1)  # TODO what must i do to do without this?
-    model_names2 = None
-    block_names2_dict = None
+    block_names1 = make_block_names1(model_name1)
     model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)  # TODO
     #########################################################################
     if request.args.get('delete') is not None:

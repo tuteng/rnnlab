@@ -102,8 +102,7 @@ class DataBase:
         ##########################################################################
         return cats_sorted_by_ba, cat_ba_dict, avg_probe_ba_list
 
-
-    def get_avg_probe_pp_list(self, clip=True):
+    def get_avg_probe_pp_list(self, clip=False):
         ##########################################################################
         avg_probe_pp_list = self.df[['probe', 'avg_probe_pp']].groupby(
             'probe').first()['avg_probe_pp'].values.tolist()
@@ -116,9 +115,6 @@ class DataBase:
         ##########################################################################
         avg_probe_ba_list = self.df[['probe', 'avg_probe_ba']].groupby(
             'probe').first()['avg_probe_ba'].values.tolist()
-
-        print self.df[['probe', 'avg_probe_ba']]
-
         ##########################################################################
         return avg_probe_ba_list
 

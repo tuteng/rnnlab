@@ -1037,7 +1037,7 @@ def make_btn_name_desc_dict():
             if not line.startswith('#'):
                 btn_name = line.split()[0]
                 desc = ' '.join(line.split()[1:-1]).strip("'")
-                is_block = line.split()[-1]  # TODO
+                is_block = line.split()[-1]  # TODO do i need this?
                 btn_name_list.append(btn_name)
                 btn_name_desc_tuple.append((btn_name, desc))
     ##########################################################################
@@ -1051,7 +1051,6 @@ def make_btn_name_desc_dict():
     return btn_name_desc_dict, btn_names_top, btn_names_bottom
 
 
-# TODO can i pass fewer variables?
 def load_database_and_img_desc(model_name, request, btn_name):
     ##########################################################################
     start = time.time()
@@ -1064,3 +1063,15 @@ def load_database_and_img_desc(model_name, request, btn_name):
     print 'Loaded database and img_desc in {} secs'.format(time.time() - start)
     ##########################################################################
     return database, imgs_desc
+
+
+def load_app_headers():
+    ##########################################################################
+    app_headers = []
+    with open(os.path.join('static', 'app_headers.txt'), 'r') as f:
+        for line in f.readlines():
+            if not line.startswith('#'):
+                app_header = line.split()[0]
+                app_headers.append(app_header)
+    ##########################################################################
+    return app_headers

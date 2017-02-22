@@ -500,36 +500,15 @@ def make_custom_cat_clust_fig(database, cats):
     return fig
 
 
-def make_pairplot_fig(database, min_num_probe_acts=10):
+def make_pairplot_fig(database):
     ##########################################################################
-    from scipy.stats import kurtosis
-
     # load data
     avg_probe_ba_list = database.get_avg_probe_ba_list()
-    keys = ['probe_freq', 'avg_probe_pp']
-    df_dict = {key: [] for key in keys}
-    probes = []
-    for n, probe in enumerate(database.probe_list):  # TODO rather than looping, retrieve whole list to speed tis up
-        probe_acts_df = database.get_probe_acts_df(probe)
-        if len(probe_acts_df) > min_num_probe_acts:
-            probes.append(probe)
-            avg_probe_pp = database.get_avg_probe_pp(probe)
-            # df_corr = probe_acts_df.T.corr(method='pearson')
-            # mask_mat = np.triu(np.ones(df_corr.shape)).astype(np.bool)
-            # corr_mat_nans = np.asarray(df_corr.mask(mask_mat))
-            # mean_acts_sim = np.nanmean(corr_mat_nans)
-            # ptp_acts_sim = np.ptp(corr_mat_nans[~np.isnan(corr_mat_nans)])
-            # acts_sim_std = np.std(corr_mat_nans[~np.isnan(corr_mat_nans)])
-            num_probe_acts = len(probe_acts_df)
-            avg_probe_ba = avg_probe_ba_list[n]
-            # cat_member_count = len(database.cat_probe_list_dict[database.probe_cat_dict[probe]])
-            # num_synsets = max(load_num_synsets(probe), 1)
-            # num_probe_acts_clusters = calc_num_probe_acts_clusters(database, probe)
-            probe_freq = np.clip(database.probe_cf_traj_dict[probe][-1], 0, 400)  # TODO get rid of clipping
-            values = [probe_freq, avg_probe_pp]
-            for key, value in zip(keys, values):
-                df_dict[key].append(value)
-    df = pd.DataFrame(df_dict, index=probes)
+    avg_probe_pp_list = database.get_avg_probe_pp_list()
+    probe_cf_list = [database.probe_cf_traj_dict[probe][-1] for probe in database.probe_list]
+    df = pd.DataFrame(data={'avg_probe_ba': avg_probe_ba_list,
+                            'avg_probe_pp': avg_probe_pp_list,
+                            'probe_cf': probe_cf_list})
     ##########################################################################
     # choose seaborn style and palette
     import seaborn as sns
@@ -545,12 +524,11 @@ def make_pairplot_fig(database, min_num_probe_acts=10):
     return fig
 
 
-def make_ba_vs_pp_fig(database):  # TODO make this a 29 subplot figure where each subplot is a category
+def make_ba_vs_pp_fig(database):
     ##########################################################################
     # seaborn
     import seaborn as sns
     sns.set_style('white')
-    palette = np.array(sns.color_palette("hls", len(database.cat_list)))
     ##########################################################################
     # load data
     avg_probe_ba_list = database.get_avg_probe_ba_list()
