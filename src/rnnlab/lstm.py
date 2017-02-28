@@ -69,10 +69,8 @@ class LSTM(object):
             ########################################################################
             # training step definition
             if optimizer == 'adagrad':
-                print 'Using Adagrad optmizer'
                 self.train_step = tf.train.AdagradOptimizer(learning_rate).minimize(total_loss)
             else:
-                print 'Using SGD optmizer'
                 self.train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(total_loss)
         ########################################################################
         # saver

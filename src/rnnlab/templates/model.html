@@ -41,15 +41,23 @@
             {% endfor %}
         </div>
 
-
-        {% if model_names2 %}
+        {% if comparison_dict_list %}
             <h3>Compare to Model :</h3>
             <div id="accordion">
-                {% for model_name2 in model_names2 %}
-                    <h3>{{model_name2}}</h3>
+                {% for comparison_dict in comparison_dict_list %}
+                {% set outer_loop = loop %}
+                <h3>
+                    {% if comparison_dict.self %}<b>Self:</b>&nbsp;{% endif %}
+                    {% for model_name2 in comparison_dict.model_names2 %}
+                    {{model_name2}}&nbsp;
+                    {% endfor %}
+                    <b>Model Class:</b> ({{comparison_dict.mclass}})
+                </h3>
                     <div>
-                        {% for block_name2 in block_names2_dict[model_name2] %}
-                            <button name="comp2models" value="{{loop.index0}}+{{model_name2}}+{{block_name2}}" class="dropbtn">{{block_name2}}</button>
+                        {% for block_name2 in comparison_dict.block_names2 %}
+                        <button name="loop_counters" value="{{outer_loop.index0}}_{{loop.index0}}" class="dropbtn">
+                            {{block_name2}}
+                        </button>
                          {% endfor %}
                     </div>
                 {% endfor %}

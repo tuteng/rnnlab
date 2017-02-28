@@ -1,4 +1,4 @@
-import time, socket, os
+import socket
 from wtforms import Form, TextAreaField, validators
 from wtforms.validators import ValidationError
 from flask import Flask, redirect, url_for
@@ -7,62 +7,14 @@ from flask import request
 from bokeh.palettes import Category10
 from itertools import cycle
 
-from utils import get_log_mtime
-from utils import make_block_names1
-from utils import make_imgs
-from utils import delete_model
-from utils import load_custom_fig_input
-from utils import load_filtered_log_entries
-from utils import make_block_names2_dict
-from utils import load_database
-from utils import block_to_mb
-from utils import load_rnnlabrc
-from utils import complete_phrase
-from utils import get_block_name_from_request
-from utils import make_btn_name_desc_dict
-from utils import load_database_and_img_desc
-from utils import load_app_headers
-
-from figs import make_neighbors_rbo_fig
-from figs import make_custom_neighbors_table_fig
-from figs import make_ba_bds_fig
-from figs import make_probes_ba_traj_fig
-from figs import make_test_pp_traj_fig
-from figs import make_probe_sim_comp_fig
-from figs import make_probe_freq_hist_fig
-from figs import make_cat_count_pie_chart_fig
-from figs import make_ba_pp_window_corr_fig
-from figs import make_ba_breakdown_annotated_fig
-from figs import make_ba_breakdown_fig
-from figs import make_cat_sim_dh_fig
-from figs import make_neighbors_table_fig
-from figs import make_cat_cluster_fig
-from figs import make_avg_probe_ba_trajs_fig
-from figs import make_cfreq_traj_fig
-from figs import make_cat_confusion_mat_fig
-from figs import make_corpus_traj_fig
-from figs import make_comp_probes_ba_fig
-from figs import make_acts_dh_fig
-from figs import make_token_acts_avg_act_corr_fig
-from figs import make_acts_2d_fig
-from figs import make_custom_cat_clust_fig
-from figs import make_cat_conf_diff_fig
-from figs import make_comp_binned_freqs_fig
-from figs import make_cat_token_ba_comp_fig
-from figs import make_num_clusters_ba_diff_corr_fig
-from figs import make_pairplot_fig
-from figs import make_probe_freq_ba_diff_corr_fig
-from figs import make_avg_probe_pp_ba_diff_corr_fig
-from figs import make_avg_probe_pp_trajs_fig
-from figs import make_probe_pp_traj_fig
-from figs import make_ba_vs_pp_fig
-from figs import make_probe_ba_vs_pp_fig
+from figs import *
 
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 app = Flask(__name__)
 btn_name_desc_dict, btn_names_top, btn_names_bottom = make_btn_name_desc_dict()
-app_headers = load_app_headers()
+app_headers = load_log_headers()
 version = 'dev'
+hostname = socket.gethostname()
 
 @app.route('/', methods=['GET', 'POST'])
 def log():
@@ -135,13 +87,14 @@ def model(model_name1):
     ##########################################################################
     template_dict = {key: value for key, value in
                      zip(['version', 'hostname', 'log_mtime'],
-                         [version, socket.gethostname(), get_log_mtime()])}
+                         [version, hostname, get_log_mtime()])}
     ##########################################################################
     # get model_names2 and block_names2_dict
-    block_names1 = make_block_names1(model_name1)
-    start = time.time()
-    model_names2, block_names2_dict = make_block_names2_dict(model_name1, block_names1)  # TODO
-    print 'Made blockname2dict in {}secs'.format(int(time.time() - start))
+    mb_names1 = make_mb_names1(model_name1)
+    comparison_dict_list, self_id = make_comparison_dict_list(model_name1, mb_names1, app_headers)
+    print 'comparison_dict_list'
+    for d in comparison_dict_list:
+        print d
     #########################################################################
     if request.args.get('delete') is not None:
         if 'yes' == raw_input('Enter yes to delete {} :\n'.format(model_name1)):
@@ -151,14 +104,14 @@ def model(model_name1):
         return redirect(url_for('log'))
     #########################################################################
     elif request.args.get('complete') is not None:
-        block_name1 = get_block_name_from_request(request, 'complete', block_names1)
+        block_name1 = get_mb_name_from_request(request, 'complete', mb_names1)
         return redirect(url_for('complete', model_name1=model_name1, block_name1=block_name1))
     ##########################################################################
     elif request.args.get('avg_trajs') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'avg_trajs')
         num_comparisons = 1
         palette = cycle(Category10[max(3, num_comparisons)][:num_comparisons])
-        fig_tuple1 = (make_probes_ba_traj_fig([database], palette), 'mpl')
+        fig_tuple1 = (make_probes_ba_traj_fig([database], palette), 'mpl')  # TODO mgroup
         fig_tuple2 = (make_test_pp_traj_fig([database], palette), 'mpl')
         fig_tuple3 = (make_probe_pp_traj_fig([database], palette), 'mpl')
         fig_tuple4 = (make_ba_pp_window_corr_fig(database), 'mpl')
@@ -217,43 +170,59 @@ def model(model_name1):
         fig_tuples = []
         for probe in fig_input:
             fig_tuples.append((make_acts_dh_fig(database, probe), 'mpl'))
-            databases = [load_database(model_name1, block_name) for block_name in database.get_saved_block_names()]
+            databases = [load_database(model_name1, block_name) for block_name in database.get_saved_mb_names()]
             fig_tuples.append((make_token_acts_avg_act_corr_fig(databases, probe), 'mpl'))
             fig_tuples.append((make_probe_ba_vs_pp_fig(database, probe), 'mpl'))
         imgs = make_imgs(*fig_tuples)
     ##########################################################################
-    elif request.args.get('comp2models') is not None:
-        comp2models_request = request.args.get('comp2models').split('+')  # TODO use hidden html buttons
-        block_name1_id = int(comp2models_request[0])
-        block_name1 = block_names1[block_name1_id]
-        model_name2, block_name2 = comp2models_request[1], comp2models_request[2]
-        database1 = load_database(model_name1, block_name1)
-        database2 = load_database(model_name2, block_name2)
-        databases = [database1, database2]
-        mb = block_to_mb(model_name1, block_name1)
-        imgs_desc = 'Model Comparison at Minibatch {:,}'.format(mb)
-        num_comparisons = 2
-        palette = cycle(Category10[max(3,num_comparisons)][:num_comparisons])
-        fig_tuple1 = (make_ba_bds_fig(databases, palette), 'mpl')
-        fig_tuple2 = (make_probes_ba_traj_fig(databases, palette), 'mpl')
-        fig_tuple3 = (make_test_pp_traj_fig(databases, palette), 'mpl')
-        fig_tuple4 = (make_probe_sim_comp_fig(databases, palette), 'mpl')
-        probes = load_custom_fig_input('comp2models')
-        # fig_tuple5 = (make_neighbors_rbo_fig(databases, probes), 'bokeh')
-        # fig_tuple6 = (make_cat_conf_diff_fig(databases), 'mpl')
-        # fig_tuple7 = (make_num_clusters_ba_diff_corr_fig(databases), 'mpl')
-        # fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(databases), 'mpl')
-        # fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(databases), 'mpl')
-        fig_tuples = []
-        # for cat in database1.cat_list:
-        # fig_tuples.append((make_cat_token_ba_comp_fig(databases, cat), 'mpl'))
-        imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3,
-                         fig_tuple4)  # , fig_tuple5, fig_tuple6, fig_tuple7,
-        # fig_tuple8, fig_tuple9) #, *fig_tuples)
+    elif request.args.get('loop_counters') is not None:
+        model_name_id, block_name_id = [int(loop_counter) for loop_counter
+                                        in request.args.get('loop_counters').split('_')]
+        if model_name_id != self_id:
+            model_names1 = comparison_dict_list[self_id]['model_names2']
+            model_names2 = comparison_dict_list[model_name_id]['model_names2']
+            block_name1 = comparison_dict_list[self_id]['block_names2'][block_name_id]
+            block_name2 = comparison_dict_list[model_name_id]['block_names2'][block_name_id]
+            # make mclasses
+            mclass1 = []
+            for model_name1 in model_names1: mclass1.append(load_database(model_name1, block_name1))
+            mclass2 = []
+            for model_name2 in model_names2: mclass2.append(load_database(model_name2, block_name2))
+            # desc
+            mb = block_name_to_mb(model_name1, block_name1)
+            imgs_desc = 'Model Class Comparison at Minibatch {:,}'.format(mb)
+            # figs
+            palette = cycle(['green', 'orange'])
+            fig_tuple1 = (make_compare_ba_by_cat_fig(mclass1, mclass2, palette), 'mpl')
+            fig_tuple2 = (make_probes_ba_traj_fig(mclass1, mclass2, palette), 'mpl')
+            fig_tuple3 = (
+            make_test_pp_traj_fig(mclass1, mclass2, palette), 'mpl')  # TODO test if sem works with more runs
+            fig_tuple4 = (make_probe_sim_comp_fig(mclass1, mclass2, palette), 'mpl')
+            fig_tuple5 = (make_neighbors_rbo_fig(mclass1, mclass2), 'mpl')
+            fig_tuple6 = (make_cat_conf_diff_fig(mclass1, mclass2), 'mpl')
+            fig_tuple7 = (make_pp_timing_ba_diff_corr_fig(mclass1, mclass2), 'mpl')
+            fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(mclass1, mclass2), 'mpl')
+            fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(mclass1, mclass2), 'mpl')
+            fig_tuple10 = (make_probe_doc_freq_ba_diff_corr_fig(mclass1, mclass2), 'mpl')  # TODO test this
+
+            # fig_tuples = []
+            # for cat in mclass1[0].cat_list:
+            #     fig_tuples.append((make_cat_probe_ba_comp_fig(mclass1, mclass2, cat), 'mpl'))
+
+
+            imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3,
+                             fig_tuple4, fig_tuple5, fig_tuple6,
+                             fig_tuple7, fig_tuple8, fig_tuple9, fig_tuple10)  # *fig_tuples)
+
+        else:  # self mclass comparison
+            block_name1 = mb_names1[block_name_id]
+            mb = block_name_to_mb(model_name1, block_name1)
+            imgs_desc = 'Self Model Class Comparison at Minibatch {:,}'.format(mb)
+            imgs = None
     ##########################################################################
     elif request.args.get('comp_trajs') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'comp_trajs')
-        compare_probes_tuples = load_compare_probes_tuples()  # TODO
+        compare_probes_tuples = load_compare_probes_tuples()  # TODO test this
         fig_tuple1 = (make_comp_probes_ba_fig(database, compare_probes_tuples), 'mpl')
         fig_tuple2 = (make_comp_binned_freqs_fig(database, compare_probes_tuples), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2)
@@ -291,9 +260,8 @@ def model(model_name1):
                            btn_names_top=btn_names_top,
                            btn_names_bottom=btn_names_bottom,
                            model_name1=model_name1,
-                           block_names1=block_names1,
-                           model_names2=model_names2,
-                           block_names2_dict=block_names2_dict,
+                           block_names1=mb_names1,  # TODO rename
+                           comparison_dict_list=comparison_dict_list,
                            imgs=imgs,
                            imgs_desc=imgs_desc)
 

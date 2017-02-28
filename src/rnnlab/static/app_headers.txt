@@ -1,5 +1,5 @@
 model_name
-block_order
+num_iterations
 num_mbs_in_doc
 bptt_steps
 completed

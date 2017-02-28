@@ -1,4 +1,4 @@
-import os, sys
+import os
 from operator import itemgetter
 import numpy as np
 import pandas as pd
@@ -12,12 +12,12 @@ class DataBase:
     Browser app instantiates this class for data analysis
     """
 
-    def __init__(self, configs_dict, df, block_name=None):
+    def __init__(self, configs_dict, df, mb_name=None):
         ##########################################################################
         # define dfpath
         runs_dir = load_rnnlabrc('runs_dir')
         self.maindf_path = os.path.join(runs_dir, configs_dict['model_name'], 'Data_Frame',
-                                   'df_block_{}.h5'.format(block_name))
+                                        'df_mb_{}.h5'.format(mb_name))
         self.ba_trajdf_path = os.path.join(runs_dir, configs_dict['model_name'], 'Data_Frame', 'ba_trajdf.h5')
         self.pp_trajdf_path = os.path.join(runs_dir, configs_dict['model_name'], 'Data_Frame', 'pp_trajdf.h5')
         ##########################################################################
@@ -26,7 +26,7 @@ class DataBase:
         self.model_name = configs_dict['model_name']
         self.num_iterations = int(configs_dict['num_iterations'])
         self.num_mbs_in_doc = int(configs_dict['num_mbs_in_doc'])
-        self.block_name = block_name
+        self.mb_name = mb_name
         self.df = df
         ##########################################################################
         # load token data
@@ -44,30 +44,29 @@ class DataBase:
         self.lex_div_traj = load_corpus_data(self.model_name, 'lex_div_traj')
         self.num_input_units = load_corpus_data(self.model_name, 'num_input_units')
 
-
-    def save_to_disk(self, block_name, test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list):
+    def save_to_disk(self, mb_name, test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list):
         ##########################################################################
-        # ad to pp database
-        ba_trajdf_entry = pd.DataFrame(index=[block_name],
+        # ad to ba database
+        ba_trajdf_entry = pd.DataFrame(index=[mb_name],
                                        data={'probes_ba': probes_ba,
-                                             'block_name': block_name})
+                                             'mb_name': mb_name})
         for probe, avg_probe_ba in zip(self.probe_list, avg_probe_ba_list):
             ba_trajdf_entry[probe] = avg_probe_ba
         with pd.HDFStore(self.ba_trajdf_path, complevel=9, complib='blosc', mode='a') as store:
             store.append('trajdf', ba_trajdf_entry,
-                         min_itemsize={'block_name': 10, 'index': 10},
+                         min_itemsize={'mb_name': 10, 'index': 10},
                          data_columns=['probes_ba'])
         ##########################################################################
         # add to pp database
-        pp_trajdf_entry = pd.DataFrame(index=[block_name],
+        pp_trajdf_entry = pd.DataFrame(index=[mb_name],
                                        data={'probes_pp': probes_pp,
-                                             'block_name': block_name,
+                                             'mb_name': mb_name,
                                              'test_pp': test_pp})
         for probe, avg_probe_pp in zip(self.probe_list, avg_probe_pp_list):
             pp_trajdf_entry[probe] = avg_probe_pp
         with pd.HDFStore(self.pp_trajdf_path, complevel=9, complib='blosc', mode='a') as store:
             store.append('trajdf', pp_trajdf_entry,
-                         min_itemsize={'block_name': 10, 'index': 10},
+                         min_itemsize={'mb_name': 10, 'index': 10},
                          data_columns=['test_pp', 'probes_pp'])
         ##########################################################################
         # add to main database
@@ -76,16 +75,14 @@ class DataBase:
         with pd.HDFStore(self.maindf_path, complevel=9, complib='blosc', mode='w', format='fixed') as store:
             store['df'] = self.df
 
-
-    def get_saved_block_names(self):
+    def get_saved_mb_names(self):
         ##########################################################################
         with pd.HDFStore(self.ba_trajdf_path, mode='r') as store:
-            saved_block_names = store.select_column('trajdf', 'index').values
+            saved_mb_names = store.select_column('trajdf', 'index').values
         ##########################################################################
-        return saved_block_names
+        return saved_mb_names
 
-
-    def get_ba_breakdown_data(self):  # TODO split this into separate methods each retrieving a single result
+    def get_ba_by_cat(self):
         ##########################################################################
         # make df_cat_and_ba
         df_cat_ba = self.df[['cat', 'probe', 'avg_probe_ba']].drop_duplicates().groupby('cat', sort=False).mean()
@@ -95,13 +92,17 @@ class DataBase:
         tuples_sorted_by_ba = sorted(tuples, key=itemgetter(1))
         cats_sorted_by_ba = [tuple[0] for tuple in tuples_sorted_by_ba]
         ##########################################################################
-        # make cat_ba_dict (this is not really needed)
-        cat_ba_dict = df_cat_ba.to_dict()['avg_probe_ba']
-        ##########################################################################
-        # make avg_probe_ba_list
+        # make cat_avg_cat_probe_ba_list_dict
         avg_probe_ba_list = self.get_avg_probe_ba_list()
+        cat_avg_cat_probe_ba_list_dict = {}
+        for cat in self.cat_list:
+            avg_cat_probe_ba_list = [avg_probe_ba for probe, avg_probe_ba
+                                     in zip(self.probe_list, avg_probe_ba_list)
+                                     if probe in self.cat_probe_list_dict[cat]]
+            cat_avg_cat_probe_ba_list_dict[cat] = avg_cat_probe_ba_list
         ##########################################################################
-        return cats_sorted_by_ba, cat_ba_dict, avg_probe_ba_list
+        return cats_sorted_by_ba, cat_avg_cat_probe_ba_list_dict
+
 
     def get_avg_probe_pp_list(self, clip=False):
         ##########################################################################
@@ -241,7 +242,7 @@ class DataBase:
             probes_acts_df = pd.DataFrame(data=all_acts_mat, index=sampled_probes_list)
         else:
             ##########################################################################
-            print 'Collapsing all probe activtions...'
+            print 'Collapsing all probe activations...'
             ##########################################################################
             probes_acts_df = self.df.groupby('probe', sort=True).mean().filter(regex='H')
         ##########################################################################
@@ -250,9 +251,9 @@ class DataBase:
     def get_mbs_axis(self):
         ##########################################################################
         with pd.HDFStore(self.ba_trajdf_path, mode='r') as store:
-            saved_block_names = store.select_column('trajdf', 'index').values
+            saved_mb_names = store.select_column('trajdf', 'index').values
         xaxis = map(lambda b: int(b) * self.num_iterations * self.num_mbs_in_doc,
-                    [b for b in saved_block_names])
+                    [b for b in saved_mb_names])
         ##########################################################################
         return xaxis
 

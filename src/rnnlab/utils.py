@@ -8,9 +8,10 @@ import datetime
 import StringIO
 import subprocess
 import base64
-import re
+from operator import itemgetter
 import pandas as pd
 import numpy as np
+from itertools import groupby
 from bokeh.embed import components
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.spatial.distance import pdist
@@ -64,15 +65,15 @@ def gen_user_configs():
             yield user_configs
 
 
-def to_block_name(block_id):
+def to_mb_name(num_mbs):
     ##########################################################################
-    return ('000000' + str(block_id))[-6:]
+    return ('0000000' + str(num_mbs))[-6:]
 
 
-def block_name_exists(model_name, block_name):
+def mb_name_exists(model_name, mb_name):
     ##########################################################################
     path = os.path.join(runs_dir, model_name, 'Data_Frame')
-    if os.path.isfile(os.path.join(path, 'df_block_{}.h5'.format(block_name))):
+    if os.path.isfile(os.path.join(path, 'df_mb_{}.h5'.format(mb_name))):
         return True
     else:
         return False
@@ -172,19 +173,19 @@ def make_rnnlab_alias(app_dirname):
             .format(os.path.join(app_dirname, app_file_name))
 
 
-def load_database(model_name, block_name=None):
+def load_database(model_name, mb_name=None):
     ##########################################################################
     # load configs
     configs_dict = load_configs_dict(model_name)
     ##########################################################################
     # make database
     path = os.path.join(runs_dir, model_name, 'Data_Frame')
-    if block_name is None:
-        file_name = 'df_block_{}.h5'.format(to_block_name(0))
+    if mb_name is None:
+        file_name = 'df_mb_{}.h5'.format(to_mb_name(0))
     else:
-        file_name = 'df_block_{}.h5'.format(block_name)
+        file_name = 'df_mb_{}.h5'.format(mb_name)
     df = pd.read_hdf(os.path.join(path, file_name), 'df')
-    database = DataBase(configs_dict, df, block_name)
+    database = DataBase(configs_dict, df, mb_name)
     ##########################################################################
     return database
 
@@ -204,7 +205,7 @@ def load_configs_dict(model_name):
 
 def remove_log_entry(model_name):
     ##########################################################################
-    log_entries_list, headers = get_log_entries_list()
+    log_entries_list, headers = load_log()
     ##########################################################################
     # get all entries except for that belonging to model_name
     new_log_entries_list = [headers]
@@ -225,7 +226,7 @@ def remove_log_entry(model_name):
 
 def is_training_completed(model_name):
     ##########################################################################
-    log_entries_list, headers = get_log_entries_list()
+    log_entries_list, headers = load_log()
     ##########################################################################
     for log_entry in log_entries_list:
         if log_entry[0] == model_name:
@@ -251,7 +252,7 @@ def delete_model(model_name):
     print 'Deleted {}'.format(model_name)
 
 
-def get_log_entries_list():
+def load_log():
     ##########################################################################
     # get log
     log_path = os.path.abspath(os.path.join(os.path.expanduser('~'), 'rnnlab_log.csv'))
@@ -267,109 +268,117 @@ def get_log_entries_list():
     return log_entries_list, headers
 
 
-def load_filtered_log_entries(headers_to_display, allow_incomplete=True):
+def load_filtered_log_entries(app_headers, allow_incomplete=True):
     ##########################################################################
-    # get log
-    log_entries_list, headers = get_log_entries_list()
+    # inits
+    log_entries_list, log_headers = load_log()
+    num_app_headers = len(app_headers)
+    c = [0, 1] if allow_incomplete else [1]
     ##########################################################################
-    col_ids = [headers.index(header_to_display) for header_to_display in headers_to_display
-               if header_to_display in headers]
-    filtered_headers = [i for n, i in enumerate(headers) if n in col_ids]
-    c = [0,1] if allow_incomplete else [1]
-    filtered_log_entries = [[i for n, i in enumerate(log_entry) if n in col_ids]
+    # make filtered_headers
+    col_ids = [log_headers.index(app_header) for app_header in app_headers
+               if app_header in log_headers]
+    filtered_headers_unsorted = [i for n, i in enumerate(log_headers) if n in col_ids]
+    sort_dict = {header: i for header, i in zip(app_headers, range(num_app_headers))}
+    filtered_headers = sorted(filtered_headers_unsorted, key=sort_dict.get)
+    ##########################################################################
+    # filter log entries
+    sort_list = [app_headers.index(filtered_header) for filtered_header in filtered_headers_unsorted]
+    filtered_log_entries = [[tuple[1] for tuple in
+                             sorted(zip(sort_list, [i for n, i in enumerate(log_entry)
+                                                    if n in col_ids]))]
                             for log_entry in log_entries_list
                             if int(log_entry[-2]) in c
-                            and float(log_entry[-1]) >= 50.0] # prevents concurrent reading and writing
-    ##########################################################################
-    # reverse so that newest entries are on top
+                            and float(log_entry[-1]) >= 50.0]
     filtered_log_entries = filtered_log_entries[::-1]
     ##########################################################################
     return filtered_log_entries, filtered_headers
 
 
-def make_block_names1(model_name, num_blocks=5):
+def make_mb_names1(model_name, num_display=5):
     ##########################################################################
-    # saved block names
-    ba_trajdf_path = os.path.join(runs_dir, model_name, 'Data_Frame', 'ba_trajdf.h5')
-    with pd.HDFStore(ba_trajdf_path, mode='r') as store:
-        saved_block_names = store.select_column('trajdf', 'index').values
+    # saved mb names
+    saved_mb_names = get_saved_mb_names_fast(model_name)
     ##########################################################################
     # inits
-    saved_blocks = [int(block_name) for block_name in saved_block_names]
-    num_train_doc_ids = load_corpus_data(model_name, 'num_train_doc_ids')
-    num_reps = int(load_configs_dict(model_name)['num_reps'])
-    num_iterations = int(load_configs_dict(model_name)['num_iterations'])
-    save_ev = int(load_configs_dict(model_name)['save_ev'])
-    num_epochs = num_reps / num_iterations
-    stop_block = num_train_doc_ids * num_epochs
-    save_ev_block = save_ev * num_epochs
+    saved_mbs = [int(mb_name) for mb_name in saved_mb_names]
+    save_ev_mb = int(load_configs_dict(model_name)['save_ev_mb'])
+    stop_mb = int(load_corpus_data(model_name, 'stop_mb'))
     ##########################################################################
     # make candidates
-    block_names1_candidates = [stop_block - (n * save_ev_block) for n in range(stop_block / save_ev_block + 1)]
-    while not len(block_names1_candidates) % num_blocks == 0:
-        block_names1_candidates.pop()
-    ##########################################################################
-    # slice and clean up
-    slice_ev = len(block_names1_candidates) / num_blocks
-    block_names1_candidates_sliced = block_names1_candidates[::slice_ev]
-    block_names1_ = filter(lambda x: x in saved_blocks, block_names1_candidates_sliced)
-    block_names1 = [to_block_name(block) for block in block_names1_]
-    block_names1 = block_names1[::-1]
+    mb1_candidates = np.arange(0, stop_mb, save_ev_mb)
+    ########################################################################## # TODO does this work?
+    # make mb_names1
+    step = len(mb1_candidates) / num_display
+    sliced = mb1_candidates[::step]
+    filtered = filter(lambda x: x in saved_mbs, sliced)
+    mb_names1 = [to_mb_name(mb) for mb in filtered]
     ##########################################################################
     # if empty, get last
-    if not block_names1: block_names1 = [saved_block_names[-1]]
+    if not mb_names1: mb_names1 = [saved_mb_names[-1]]
     ##########################################################################
-    return block_names1
+    return mb_names1
 
 
-def block_to_mb(model_name, block_name):  # TODO update everywhere to mb instead of iteration
+def make_comparison_dict_list(model_name1, mb_names1, log_headers, limit_to_same_flavor=False):
     ##########################################################################
-    # get configs_dict
-    configs_dict = load_configs_dict(model_name)
-    num_iterations = int(configs_dict['num_iterations'])
-    num_mbs_in_doc = int(configs_dict['num_mbs_in_doc'])
-    mb = int(block_name) * num_iterations * num_mbs_in_doc
-    ##########################################################################
-    return mb
-
-
-def make_block_names2_dict(model_name1, block_names1, limit_to_same_flavor=False):
-    ##########################################################################
+    # make model_names2_tuples
     num_reps1 = load_configs_dict(model_name1)['num_reps']
     if limit_to_same_flavor: flavors = [model_name1.split('_')[1]]
     else: flavors = ['srn', 'lstm', 'irnn', 'scrn']
-    filtered_log_entries, filtered_headers = load_filtered_log_entries(['model_name','num_reps'])
-    model_names2 = [log_entry[0] for log_entry in filtered_log_entries
-                    if log_entry[0].split('_')[1] in flavors
-                    and log_entry[0] != model_name1
-                    and int(log_entry[1]) == num_reps1] # compare only models with same num_reps
+    headers = ['num_reps'] + log_headers  # num reps must be first in list
+    filtered_log_entries, filtered_headers = load_filtered_log_entries(headers)
+    model_names2_tuples = [(log_entry[1], '+'.join(log_entry[2:-2])) for log_entry in filtered_log_entries
+                           if log_entry[1].split('_')[1] in flavors
+                           and int(log_entry[0]) == num_reps1]  # compare only models with same num_reps
+    model_names2_tuples = sorted(model_names2_tuples, key=itemgetter(1))  # required for groupby
     ##########################################################################
-    # make block_names2_dict
-    block_names2_dict = {}
-    for model_name2 in model_names2:  # TODO can i make this faster?
+    # make comparison_dict_list
+    mbs1_set = set(mb_names1)
+    comparison_dict_list = []
+    for mclass, group in groupby(model_names2_tuples, itemgetter(1)):
+        model_names2 = [tuple[0] for tuple in list(group)]
         ##########################################################################
-        # get block_names2
-        block_names2 = []
-        database = load_database(model_name2)
-        saved_block_names2 = database.get_saved_block_names()
-        for saved_block_name2 in saved_block_names2:
-            mb2 = block_to_mb(model_name2, saved_block_name2)
-            for block_name1 in block_names1:
-                mb1 = block_to_mb(model_name1, block_name1)
-                if mb2 == mb1:
-                    block_names2.append(saved_block_name2)
-                    continue
+        # make comparison_dict
+        saved_mb_names2 = get_saved_mb_names_fast(model_names2[0])
+        mbs2_set = set(saved_mb_names2)
+        mb_names2 = sorted(list(mbs1_set.intersection(mbs2_set)))
+        is_self = True if model_name1 in model_names2 else False
+        comparison_dict = {'mb_names2': mb_names2,
+                           'model_names2': model_names2,
+                           'self': is_self,
+                           'mclass': mclass}
         ##########################################################################
-        # add block_names2
-        block_names2_dict[model_name2] = block_names2
+        # add dict to list
+        comparison_dict_list.append(comparison_dict)
     ##########################################################################
-    return model_names2, block_names2_dict
+    # sort by time
+    comparison_dict_list = sorted(comparison_dict_list,
+                                  key=lambda x: x['model_names2'][0], reverse=True)  # this is working
+    ##########################################################################
+    # get self_id
+    self_id = None
+    for n, comparison_dict in enumerate(comparison_dict_list):
+        if comparison_dict['self']:
+            self_id = n
+            break
+    ##########################################################################
+    return comparison_dict_list, self_id
 
 
+def get_saved_mb_names_fast(model_name):
+    ##########################################################################
+    ba_trajdf_path = os.path.join(runs_dir, model_name, 'Data_Frame', 'ba_trajdf.h5')
+    with pd.HDFStore(ba_trajdf_path, mode='r') as store:
+        saved_mb_names = store.select_column('trajdf', 'index').values
+    ##########################################################################
+    # sort
+    saved_mb_names = sorted(saved_mb_names)
+    ##########################################################################
+    return saved_mb_names
 
 
-
-def score_2_neighbor_rankings(neighbors1, neighbors2, p=0.98):
+def calc_neighbors_rbo(neighbors1, neighbors2, p=0.98):
     ##########################################################################
     if neighbors1 == None: neighbors1 = []
     if neighbors2 == None: neighbors2 = []
@@ -421,43 +430,46 @@ def score_2_neighbor_rankings(neighbors1, neighbors2, p=0.98):
     return rbo_ext
 
 
-def make_tf_idf_mat(corpus, save_ev_block):
+def make_tf_idf_mat(corpus, save_ev_mb=None):
     ##########################################################################
     print 'Making tf-idf mat using train docs...'
     ##########################################################################
     # fit tf-idf model
+    if save_ev_mb is None: save_ev_mb = 1
     doc_str_list = [] # scikit requires a list of space-separated words
     tfidf = TfidfVectorizer(vocabulary=corpus.token_list)
-    for block_name, doc_id in corpus.gen_train_block_name_and_id():
-        doc_str = ' '.join(corpus.doc_token_lists[doc_id])
+    for doc_id in corpus.gen_train_doc_id(num_epochs=1):
+        doc_str = ' '.join(corpus.train_doc_token_lists[doc_id])
         doc_str_list.append(doc_str)
     tfidf.fit(doc_str_list)
     ##########################################################################
-    # get values from save_ev_block
+    # get values at saved timepoints
     doc_str_list = []
-    for block_name, doc_id in corpus.gen_train_block_name_and_id():
-        if int(block_name) % save_ev_block == 0:
-            doc_str = ' '.join(corpus.doc_token_lists[doc_id])
+    for n, doc_id in enumerate(corpus.gen_train_doc_id()):
+        if (n * corpus.num_mbs_in_doc) % save_ev_mb == 0:
+            doc_str = ' '.join(corpus.train_doc_token_lists[doc_id])
             doc_str_list.append(doc_str)
     tf_idf_mat = tfidf.fit_transform(doc_str_list).toarray()
     ##########################################################################
     return tf_idf_mat
 
 
-def make_probe_cf_traj_dict(corpus, save_ev_block, min_probe_freq=10,
+def make_probe_cf_traj_dict(corpus, save_ev_mb, min_probe_freq=10,
                             verbose=False):  # TODO link this number to num_ba_samples
     ##########################################################################
     print 'Making probe_cf_traj using train docs...'
     ##########################################################################
     # make dict
-    probe_cf_traj_dict = {probe: np.zeros(corpus.num_total_train_docs) for probe in corpus.probe_list}
+    probe_cf_traj_dict = {probe: np.zeros(corpus.num_blocks) for probe in corpus.probe_list}
     ##########################################################################
     # collect probe frequency
-    for block_name, doc_id in corpus.gen_train_block_name_and_id():
-        doc_probe_list = corpus.doc_token_lists[doc_id]
-        traj_id = int(block_name) - 1
+    for n, doc_id in enumerate(corpus.gen_train_doc_id()):
+        doc_probe_list = corpus.train_doc_token_lists[doc_id]
         for probe in doc_probe_list:
-            if probe in corpus.probe_id_dict:  probe_cf_traj_dict[probe][traj_id] += 1
+            if probe in corpus.probe_id_dict:  probe_cf_traj_dict[probe][n] += 1
+    ##########################################################################
+    # copy
+    probe_doc_freq_dict = probe_cf_traj_dict.copy()
     ##########################################################################
     # calc cumulative sum
     for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
@@ -467,30 +479,32 @@ def make_probe_cf_traj_dict(corpus, save_ev_block, min_probe_freq=10,
     num_probe_occurences = 0
     if min_probe_freq is not None:
         for probe in corpus.probe_list:
-            if verbose: print probe, probe_cf_traj_dict[probe][-1]
-            num_probe_occurences += probe_cf_traj_dict[probe][-1]
-            if probe_cf_traj_dict[probe][-1] < min_probe_freq:
+            probe_freq = probe_cf_traj_dict[probe][-1] / corpus.num_epochs
+            num_probe_occurences += probe_freq
+            if verbose: print probe, probe_freq
+            if probe_freq < min_probe_freq:
                 print 'rnnlab WARNING: {} occurs less than {} times in training docs'.format(probe, min_probe_freq)
     ##########################################################################
-    # get values from save_ev_block
+    # get values at saved timepoints
     for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
         cfs =[]
         for n, cf in enumerate(probe_cf_traj_dict[probe]):
-            if n % save_ev_block == 0:
+            if (n * corpus.num_mbs_in_doc) % save_ev_mb == 0:
                 cfs.append(cf)
         probe_cf_traj_dict[probe] = cfs
     ##########################################################################
-    return probe_cf_traj_dict, num_probe_occurences
+    return probe_cf_traj_dict, num_probe_occurences, probe_doc_freq_dict
 
 
-def make_lex_div_traj(corpus, save_ev_block):
+def make_lex_div_traj(corpus, save_ev_mb=None):
     ##########################################################################
     print 'Making lex_div_traj using train docs...'
     ##########################################################################
+    if save_ev_mb is None: save_ev_mb = 1
     lex_div_traj =[]
-    for block_name, doc_id in corpus.gen_train_block_name_and_id():
-        if int(block_name) % save_ev_block == 0:
-            doc_probe_list = corpus.doc_token_lists[doc_id]
+    for n, doc_id in enumerate(corpus.gen_train_doc_id()):
+        if (n * corpus.num_mbs_in_doc) % save_ev_mb == 0:
+            doc_probe_list = corpus.train_doc_token_lists[doc_id]
             num_unique_tokens = len(list(set(doc_probe_list)))
             num_total_tokens = len(doc_probe_list)
             lex_div = float(num_unique_tokens) / num_total_tokens
@@ -525,7 +539,7 @@ def create_rnn_graph(num_input_units, configs_dict):
 def make_cat_conf_mat(database):
     ##########################################################################
     path = os.path.join(runs_dir, database.model_name, 'Balanced_Accuracy')
-    file_name = 'cat_confusion_mat_data_block_{}.npz'.format(database.block_name)
+    file_name = 'cat_confusion_mat_data_mb_{}.npz'.format(database.mb_name)
     npzfile = np.load(os.path.join(path, file_name))
     hits_by_cat_dict = npzfile['hits_by_cat_dict'].item()
     fas_by_cat_dict = npzfile['fas_by_cat_dict'].item()
@@ -576,24 +590,12 @@ def get_excluded_tokens(token_id_dict, exc_criteria):
 def complete_phrase(database, phrase, num_words=4, num_outputs=5,
                     num_samples=50, sort_column=None, exc_criteria=0):
     ##########################################################################
-    """
-    :param model_name: model_name
-    :param block_name: block_name
-    :param phrase: string containing tokens (validated by vocab_validator)
-    :param num_words: number of downstream words
-    :param num_outputs: number of output predictions
-    :param num_samples: number of random samples before selection
-    :param sort_column: sort output by this column
-    :param exc_criteria: exclusion criteria. 0=xxx and UNKNOWN. 1 adds punctuation. 2 adds PERIOD
-    :return: output_list: list containing num_outputs phrases (string)
-    """
-    ##########################################################################
     import tensorflow as tf
     ##########################################################################
     # restore rnn
     rnn_graph = create_rnn_graph(database.num_input_units, database.configs_dict)
     rnn_graph.saver.restore(rnn_graph.sess, os.path.join(runs_dir, database.model_name, 'Weights',
-                                                         'weights_at_block_{}.ckpt'.format(database.block_name)))
+                                                         'weights_at_mb_{}.ckpt'.format(database.mb_name)))
     ##########################################################################
     # inits
     bptt_steps = database.configs_dict['bptt_steps']
@@ -634,7 +636,7 @@ def complete_phrase(database, phrase, num_words=4, num_outputs=5,
     if sort_column is not None: output_list.sort(key=lambda x: x[sort_column])
     ##########################################################################
     rnn_graph.sess.close()
-    tf.reset_default_graph()  # TODO can i reset variables without importing tensorlfow ?
+    tf.reset_default_graph()
     ##########################################################################
     return output_list
 
@@ -658,10 +660,8 @@ def calc_hca(database, acts_cols, cat_col, epochs=30):
 
 def calc_ba_list(database, num_ba_samples, ba_method='exemplar', thr_step=0.001):
     ##########################################################################
-    print 'Calculating balanced accuracy...'
-    ##########################################################################
     # make thr_ranges
-    num_cpus = 6
+    num_cpus = 3
     thr_start, thr_end = 0.7, 1.0  # TODO how flexible is this?
     thr_num_steps = round(((thr_end - thr_start) / thr_step) / num_cpus, 2)
     thr_lists = []
@@ -700,6 +700,8 @@ def calc_ba_list(database, num_ba_samples, ba_method='exemplar', thr_step=0.001)
             'rnnlab: Use either "prototype" or "exemplar" as method for calculating balanced accuracy.'
             'Only "prototype" supports using num_ba_samples > 0')
     ##########################################################################
+    print 'Calculating balanced accuracy...'
+    ##########################################################################
     # get async results
     ba_mats = [result.get()[0] for result in async_results]
     ba_mat = np.hstack((mat for mat in ba_mats))
@@ -723,7 +725,7 @@ def calc_ba_list(database, num_ba_samples, ba_method='exemplar', thr_step=0.001)
     cat_confusion_mat_data = cat_confusion_mat_data_list[best_token_ba_mat_col_id]
     runs_dir = load_rnnlabrc('runs_dir')
     path = os.path.join(runs_dir, database.model_name, 'Balanced_Accuracy')
-    file_name = 'cat_confusion_mat_data_block_{}.npz'.format(database.block_name)
+    file_name = 'cat_confusion_mat_data_mb_{}.npz'.format(database.mb_name)
     np.savez(os.path.join(path, file_name),
              hits_by_cat_dict=cat_confusion_mat_data[0],
              fas_by_cat_dict=cat_confusion_mat_data[1])
@@ -961,14 +963,14 @@ def calculate_dprime(hits, misses, fas, crs):
     return d_prime, beta, c, ad
 
 
-def get_block_name_from_request(request, arg, block_names1):
+def get_mb_name_from_request(request, arg, mb_names1):
     ##########################################################################
     if request.args.get(arg) == 'traj':
-        block_name1 = block_names1[-1]
+        mb_name = mb_names1[-1]
     else:
-        block_name1 = request.args.get(arg)
+        mb_name = request.args.get(arg)
     ##########################################################################
-    return block_name1
+    return mb_name
 
 
 def make_hc_fig(database):  # TODO
@@ -993,7 +995,9 @@ def load_num_synsets(probe, verbose=False):
     return num_synsets
 
 
-def calc_num_probe_acts_clusters(database, probe, min_num_acts=1, method='elbow'):
+def calc_num_probe_acts_clusters(database, probe, min_num_acts=100, method='elbow'):
+    ##########################################################################
+    print 'Calculating number of clusters for {}...'.format(probe)
     ##########################################################################
     acts_mat = database.get_probe_acts_df(probe).values
     if method == 'elbow':
@@ -1023,7 +1027,7 @@ def plot_best_fit_line(ax, xys, fontsize, color='red', linewidth=2.0, zorder=3, 
     # plot rsqrd
     variance = np.var(y)
     residuals = np.var([(slope * xx + intercept - yy) for xx, yy in zip(x, y)])
-    Rsqr = np.round(1 - residuals / variance, decimals=4)
+    Rsqr = np.round(1 - residuals / variance, decimals=2)
     if Rsqr > 0.5: fontsize += 5
     ax.text(x_pos, y_pos, '$R^2$ = {}'.format(Rsqr), transform=ax.transAxes, fontsize=fontsize)
 
@@ -1038,7 +1042,6 @@ def make_btn_name_desc_dict():
             if not line.startswith('#'):
                 btn_name = line.split()[0]
                 desc = ' '.join(line.split()[1:-1]).strip("'")
-                is_block = line.split()[-1]  # TODO do i need this?
                 btn_name_list.append(btn_name)
                 btn_name_desc_tuple.append((btn_name, desc))
     ##########################################################################
@@ -1056,17 +1059,17 @@ def load_database_and_img_desc(model_name, request, btn_name):
     ##########################################################################
     start = time.time()
     btn_name_desc_dict, btn_names_top, btn_names_bottom = make_btn_name_desc_dict()
-    block_names1 = make_block_names1(model_name)
-    block_name = get_block_name_from_request(request, btn_name, block_names1)
-    database = load_database(model_name, block_name)
+    mb_names1 = make_mb_names1(model_name)
+    mb_name = get_mb_name_from_request(request, btn_name, mb_names1)
+    database = load_database(model_name, mb_name)
     desc = btn_name_desc_dict[btn_name]
-    imgs_desc = '{} {}'.format(desc, block_name)
+    imgs_desc = '{} {}'.format(desc, mb_name)
     print 'Loaded database and img_desc in {} secs'.format(time.time() - start)
     ##########################################################################
     return database, imgs_desc
 
 
-def load_app_headers():
+def load_log_headers():
     ##########################################################################
     app_headers = []
     with open(os.path.join('static', 'app_headers.txt'), 'r') as f:
@@ -1078,6 +1081,19 @@ def load_app_headers():
     return app_headers
 
 
+def load_compare_probes_tuples():
+    ##########################################################################
+    compare_probes_tuples = []
+    with open(os.path.join('static', 'compare_probes.txt'), 'r') as f:
+        for line in f.readlines():
+            if not line.startswith('#'):
+                probe = line.split()[0]
+                group = line.split()[1]
+                compare_probes_tuples.append((probe, group))
+    ##########################################################################
+    return compare_probes_tuples
+
+
 def human_format(num, pos):  # pos is required for formatting mpl axis ticklabels
     ##########################################################################
     magnitude = 0
@@ -1086,3 +1102,13 @@ def human_format(num, pos):  # pos is required for formatting mpl axis ticklabel
         num /= 1000.0
     ##########################################################################
     return '{}{}'.format(num, ['', 'K', 'M', 'G', 'T', 'P'][magnitude])
+
+
+def get_neighbors_from_probe_simmat(database, probe_simmat, probe, num_neighbors):  # TODO use this in neighbors figures
+    ##########################################################################
+    probe_id = database.probe_id_dict[probe]
+    neighbor_tuples = [(target, sim) for target, sim in zip(database.probe_list, probe_simmat[probe_id])]
+    neighbor_tuples_sorted = sorted(neighbor_tuples, key=itemgetter(1), reverse=True)[1:num_neighbors]
+    neighbors = [tuple[0] for tuple in neighbor_tuples_sorted]
+    ##########################################################################
+    return neighbors

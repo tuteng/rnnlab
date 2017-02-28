@@ -17,7 +17,7 @@ from database import load_corpus_data
 
 from utils import create_rnn_graph
 from utils import check_disk_space
-from utils import get_log_entries_list
+from utils import load_log
 from utils import is_training_completed
 from utils import load_rnnlabrc
 from utils import make_lex_div_traj
@@ -25,9 +25,8 @@ from utils import make_probe_cf_traj_dict
 from utils import make_rnnlab_alias
 from utils import make_tf_idf_mat
 from utils import remove_log_entry
-from utils import to_block_name
+from utils import to_mb_name
 from utils import calc_ba_list
-from utils import calc_probe_sim_mat
 
 
 
@@ -46,17 +45,14 @@ class RNN():
         # make configs dict
         self.configs_dict = self.make_configs_dict(user_configs, flavor)
         ##########################################################################
-        # calc num_epochs and save_ev_block
+        # calc num_epochs
         self.num_reps = int(self.configs_dict['num_reps'])
         self.num_iterations = int(self.configs_dict['num_iterations'])
         self.num_epochs = int(self.num_reps / self.num_iterations)
-        self.save_ev_block = int(self.configs_dict['save_ev']) * self.num_epochs
         if not self.num_reps % self.num_iterations == 0:
             sys.exit('rnnlab: "num_reps" must be divisible by "num_iterations"')
         print 'Num reps: {} / Num iterations: {} --> Num epochs : {}'.format(
             self.num_reps, self.num_iterations, self.num_epochs)
-        print 'Num epochs: {} x save_ev: {} --> Saving every {}th block'.format(
-            self.num_epochs,int(self.configs_dict['save_ev']), self.save_ev_block)
         ##########################################################################
         # make corpus
         corpus_kwargs = {key : self.configs_dict[key]
@@ -65,6 +61,9 @@ class RNN():
         corpus_kwargs['num_epochs'] = self.num_epochs
         self.corpus = Corpus(**corpus_kwargs)
         ##########################################################################
+        # calc stop_mb
+        self.stop_mb = self.corpus.num_train_doc_ids * self.num_reps * self.corpus.num_mbs_in_doc
+        ##########################################################################
         # create rnn_graph
         num_input_units = len(self.corpus.token_list)
         self.rnn_graph = create_rnn_graph(num_input_units, self.configs_dict)
@@ -72,10 +71,10 @@ class RNN():
         # assign instance variables
         self.model_name = self.configs_dict['model_name']
         self.block_order = str(self.configs_dict['block_order'])
+        self.save_ev_mb = int(self.configs_dict['save_ev_mb'])
         self.mb_size = int(self.configs_dict['mb_size'])
         self.num_hidden_units = int(self.configs_dict['num_hidden_units'])
         self.bptt_steps = int(self.configs_dict['bptt_steps'])
-        self.stop_block_name = to_block_name(self.corpus.num_train_doc_ids * self.num_epochs)
         self.num_ba_samples = int(self.configs_dict['num_ba_samples'])
         self.probes_ba_list = []
 
@@ -86,51 +85,50 @@ class RNN():
         ##########################################################################
         # inits
         elapsed_start = time.time()
-        num_mbs_trained, total_num_examples_seen, completed = 0, 0, False
+        mbs, completed = 0, False
         ##########################################################################
         # save to data base before training
         print 'Saving data from untrained model...'
-        self.data_step(to_block_name(0))
+        self.data_step(to_mb_name(0))
         ##########################################################################
         # training blocks
-        for block_name, block_id in self.corpus.gen_train_block_name_and_id():
-            self.print_train_stats(elapsed_start, block_name, block_id, num_mbs_trained)
+        for doc_id in self.corpus.gen_train_doc_id():
+            if doc_id == self.stop_mb: break
+            self.print_train_stats(elapsed_start, doc_id, mbs)
             ##########################################################################
             # training iterations
             for iteration_counter in xrange(self.num_iterations):
                 ##########################################################################
                 # batch
-                for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
-                    num_mbs_trained += 1
-                    total_num_examples_seen += self.mb_size
+                for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, doc_id):
+                    mbs += 1
                     self.rnn_graph.sess.run(self.rnn_graph.train_step,
                                             feed_dict={self.rnn_graph.x: X, self.rnn_graph.y: Y})
             ##########################################################################
             # data_step
-            if int(block_name) % self.save_ev_block == 0:
-                self.data_step(block_name)
+            if mbs % self.save_ev_mb == 0:
+                self.data_step(to_mb_name(mbs))
         ##########################################################################
         # at end of training, close session and upload data
         self.complete_training()
 
-
-    def data_step(self, block_name):
+    def data_step(self, mb_name):
         ##########################################################################
         start = time.time()
         ##########################################################################
         # save checkpoint
-        self.save_ckpt(block_name)
+        self.save_ckpt(mb_name)
         ##########################################################################
         # extract acts
         df = self.make_df()
         df = df.sample(frac=1).reset_index(drop=True)  # shuffle to reduce order effects when sampling during ba
         ##########################################################################
         # analyze acts
-        database = DataBase(self.configs_dict, df, block_name)
+        database = DataBase(self.configs_dict, df, mb_name)
         analysis_list = self.make_analysis_list(database)
         ##########################################################################
         # save to disk
-        database.save_to_disk(block_name, *analysis_list)
+        database.save_to_disk(mb_name, *analysis_list)
         #########################################################################
         # print to console
         print 'test_pp : {} |probes_ba : {} |Database ops completed in {} secs'.format(
@@ -167,10 +165,9 @@ class RNN():
         ##########################################################################
         return [test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list]
 
-
-    def save_ckpt(self, block_name):
+    def save_ckpt(self, mb_name):
         ##########################################################################
-        ckpt_outfile = "weights_at_block_{}.ckpt".format(block_name)
+        ckpt_outfile = "checkpoint_mb_{}.ckpt".format(mb_name)
         path = os.path.join(self.runs_dir, self.model_name, 'Weights')
         self.rnn_graph.saver.save(self.rnn_graph.sess, os.path.join(path, ckpt_outfile))
 
@@ -180,7 +177,7 @@ class RNN():
         # check disk space
         check_disk_space()
         ##########################################################################
-        # remove low priority data from previous rnns
+        # remove low priority data
         self.remove_old_data()
         ##########################################################################
         # make log entry
@@ -210,9 +207,10 @@ class RNN():
                  cat_probe_list_dict=self.corpus.cat_probe_list_dict)
         ##########################################################################
         # make corpus data
-        probe_cf_traj_dict, num_probe_occurences = make_probe_cf_traj_dict(self.corpus, self.save_ev_block)
-        tf_idf_mat = make_tf_idf_mat(self.corpus, self.save_ev_block)
-        lex_div_traj = make_lex_div_traj(self.corpus, self.save_ev_block)
+        probe_cf_traj_dict, num_probe_occurences, probe_doc_freq_dict = make_probe_cf_traj_dict(
+            self.corpus, self.save_ev_mb)
+        tf_idf_mat = make_tf_idf_mat(self.corpus, self.save_ev_mb)
+        lex_div_traj = make_lex_div_traj(self.corpus, self.save_ev_mb)
         num_input_units = len(self.corpus.token_list)
         ##########################################################################
         # save corpus data
@@ -220,11 +218,13 @@ class RNN():
         file_name = 'corpus_data.npz'.format(self.model_name)
         np.savez(os.path.join(path, file_name),
                  probe_cf_traj_dict=probe_cf_traj_dict,
-                 num_train_doc_ids=self.corpus.num_train_doc_ids,
+                 num_blocks=self.corpus.num_blocks,
+                 stop_mb=self.stop_mb,
                  tf_idf_mat=tf_idf_mat,
                  lex_div_traj=lex_div_traj,
                  num_input_units=num_input_units,
-                 num_probe_occurences=num_probe_occurences)
+                 num_probe_occurences=num_probe_occurences,
+                 probe_doc_freq_dict=probe_doc_freq_dict)
         ##########################################################################
         #  save configs_dict to npy
         path = os.path.join(self.runs_dir, self.model_name, 'Configs')
@@ -233,15 +233,14 @@ class RNN():
         ##########################################################################
         print 'Saved token_data, corpus_data, and configs_dict'
 
-
-    def remove_old_data(self, num_more_recent=5):
+    def remove_old_data(self, num_more_recent=16):
         ##########################################################################
         del_candidates_list = []
         model_names_deleted = []
         ##########################################################################
         # get runs log
         if os.path.isfile(self.log_path):
-            log_entries_list, headers = get_log_entries_list()
+            log_entries_list, headers = load_log()
             ##########################################################################
             # make del_candidates_list
             if log_entries_list:
@@ -315,13 +314,12 @@ class RNN():
             for row in log_content_new:
                 writer.writerow(row)
 
-
-    def print_train_stats(self, elapsed_start, block_name, block_id, num_mbs_trained):
+    def print_train_stats(self, start, block_id, mbs):
         ##########################################################################
-        secs = int(abs(elapsed_start - time.time()))
+        secs = int(abs(start - time.time()))
         hours = int(float(secs) / 3600)
-        print '{} |Block Name: {}/{} Id: {:>4} |Batch: {:>10} |Elapsed: {:>2} hrs'.format(
-            self.model_name, block_name, self.corpus.num_total_train_docs, block_id, num_mbs_trained, hours)
+        print '{} |Block Id: {:>4,} |Batch: {:>9,}/{:,} |Elapsed: {:>2} hrs'.format(
+            self.model_name, block_id, mbs, self.stop_mb, hours)
 
 
     def complete_training(self):
@@ -340,10 +338,11 @@ class RNN():
         ##########################################################################
         # inits
         pbar = pyprind.ProgBar(self.corpus.num_train_doc_ids)
+        doc_id = 0
         num_tokens_seen = 0
         acts_mat_list = []
         tokens_in_mb = []
-        mb_data_dict_keys = ['X', 'doc_name', 'probe', 'probe_id', 'Y', 'cat', 'probe_pp']
+        mb_data_dict_keys = ['X', 'doc_id', 'probe', 'probe_id', 'Y', 'cat', 'probe_pp']
         mb_data_dict = {key: [] for key in mb_data_dict_keys}
         probe_X = np.zeros((self.mb_size, self.bptt_steps), dtype=int)
         probe_Y = np.zeros(self.mb_size, dtype=int)
@@ -351,7 +350,8 @@ class RNN():
         probe_freq_dict = {probe: 0 for probe in self.corpus.probe_list}
         ##########################################################################
         # get mb_data_dict from each block_name and add to df
-        for block_name, block_id in self.corpus.gen_train_block_name_and_id(1, 'chronological'):
+        for block_id in self.corpus.gen_train_doc_id(1, 'chronological'):
+            doc_id += 1
             pbar.update()
             num_tokens_seen += self.corpus.num_mbs_in_doc * self.mb_size
             for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, block_id):
@@ -361,7 +361,7 @@ class RNN():
                     # if token is probe, add data to mb_data_dict
                     if token in self.corpus.probe_id_dict and token not in tokens_in_mb:
                         mb_data_dict['X'].append(X[n])  # list oftoken_ids in bptt window # TODO do stats with this
-                        mb_data_dict['doc_name'].append(int(block_name))
+                        mb_data_dict['doc_id'].append(doc_id)
                         mb_data_dict['probe'].append(token)
                         mb_data_dict['probe_id'].append(self.corpus.probe_id_dict[token])
                         mb_data_dict['Y'].append(Y[n])
@@ -391,17 +391,18 @@ class RNN():
         acts_for_df = np.vstack((mat for mat in acts_mat_list))
         acts_for_df_labels = ['H{}'.format(i) for i in range(self.num_hidden_units)]
         df = pd.DataFrame(acts_for_df, columns=acts_for_df_labels)
-        num_probe_occs_found = len(mb_data_dict['probe_pp'])
+        num_probe_occurences_found = len(mb_data_dict['probe_pp'])
         for df_column_label in mb_data_dict_keys:
             if 'X' == df_column_label:
-                for n, row in enumerate(np.asarray(mb_data_dict['X'][:num_probe_occs_found]).T):
+                for n, row in enumerate(np.asarray(mb_data_dict['X'][:num_probe_occurences_found]).T):
                    df['X{}'.format(n)] = row
             else:
-                df[df_column_label] = mb_data_dict[df_column_label][:num_probe_occs_found]
+                df[df_column_label] = mb_data_dict[df_column_label][:num_probe_occurences_found]
         ##########################################################################
-        num_probe_occs = load_corpus_data(self.model_name, 'num_probe_occurences')
-        missed_probe_occs = num_probe_occs - num_probe_occs_found
-        print 'Number of missed probe occurences (due to windowing): {}'.format(missed_probe_occs)
+        # calc num missed probe occurences
+        num_probe_occurences = load_corpus_data(self.model_name, 'num_probe_occurences')
+        missed_probe_occurences = num_probe_occurences - num_probe_occurences_found
+        print 'Number of missed probe occurrences (due to windowing): {}'.format(missed_probe_occurences)
         ##########################################################################
         return df
 
@@ -420,6 +421,7 @@ class RNN():
         test_pp = int(test_pp_sum / num_batches)
         ##########################################################################
         return test_pp
+
 
     def make_model_name(self, flavor):
         ##########################################################################
@@ -441,16 +443,16 @@ class RNN():
             'bptt_steps': 7,
             'num_hidden_units': 512,
             'mb_size': 64,
-            'learning_rate': 0.001,
+            'learning_rate': 0.01,
             'weight_init': 'uus',
-            'act_function': 'sigmoid',
+            'act_function': 'tanh',
             'bias': 1,
             'leakage': 0.95,
             'num_iterations': 20,
             'num_reps': 20,
             'block_order': 'chronological',
             'optimizer': 'adagrad',
-            'save_ev': 100,
+            'save_ev_mb': 100000,
             'num_ba_samples': 0,
             'model_name': self.make_model_name(flavor),
             'flavor': flavor,

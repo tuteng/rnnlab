@@ -3,8 +3,7 @@ import numpy as np
 import sys
 from sklearn.feature_extraction.text import CountVectorizer
 
-
-from utils import to_block_name
+from utils import to_mb_name
 
 
 class Corpus(object):
@@ -25,85 +24,72 @@ class Corpus(object):
         self.vocab_file_name = vocab_file_name # if specified, this is the list of tokens to include in vocab
         self.freq_cutoff = freq_cutoff # use this if no vocab file specified, None includes all tokens
         self.probes_name = probes_name # list of tokens to use for analysis after training
+        self.num_mbs_in_doc = num_mbs_in_doc  # number of minibatches contained in one document
         ##########################################################################
         # make instance variables
-        self.num_mbs_in_doc = num_mbs_in_doc
-        self.doc_token_lists, self.num_total_docs = self.make_doc_token_lists(mb_size, bptt_steps)
-        self.test_doc_ids, self.train_doc_ids = self.split_corpus()
-        self.num_train_doc_ids, self.num_test_doc_ids = len(self.train_doc_ids), len(self.test_doc_ids)
-        self.num_total_train_docs = self.num_train_doc_ids * self.num_epochs
+        self.train_doc_token_lists, self.test_doc_token_lists = self.make_doc_token_lists(mb_size, bptt_steps)
+        self.num_train_doc_ids = len(self.train_doc_token_lists)
+        self.num_test_doc_ids = len(self.test_doc_token_lists)
+        self.num_blocks = self.num_train_doc_ids * num_epochs
+        print 'Num train docs: {} |Num test docs: {}'.format(self.num_train_doc_ids, self.num_test_doc_ids)
         self.token_list, self.token_id_dict, self.probe_list, self.probe_id_dict, \
         self.probe_cat_dict, self.cat_list, self.cat_probe_list_dict = self.make_token_data()
 
-    def gen_doc_token_list(self, corpus_token_list, doc_size):
+    def gen_doc_token_lists(self, corpus_token_list, doc_size):
         ##########################################################################
         for i in range(0, len(corpus_token_list), doc_size):
             yield corpus_token_list[i:i + doc_size]
 
-    def make_doc_token_lists(self, mb_size, bptt_steps):
+    def make_doc_token_lists(self, mb_size, bptt_steps, num_test_docs=100):
         ##########################################################################
         # load corpus
-        corpus_token_list = []
-        with open(os.path.join(self.data_dir, self.corpus_name, 'corpus.txt'),'r') as f:
-            for doc in f.readlines():
-                doc_token_list = doc.split()
-                doc_token_list_cleaned = [token.strip() for token in doc_token_list]
-                corpus_token_list += doc_token_list_cleaned
+        with open(os.path.join(self.data_dir, self.corpus_name, 'corpus.txt'), 'r') as f:
+            corpus_doc_list = list(f.readlines())
+        num_docs_in_corpus = len(corpus_doc_list)
         ##########################################################################
-        # resize
+        # make test ids
+        np.random.seed(42)  # this makes sure test doc ids are always the same
+        test_doc_ids = np.random.choice(range(num_docs_in_corpus), num_test_docs, replace=False)
+        ##########################################################################
+        # make train and test corpus token lists
+        train_corpus_token_list, test_corpus_token_list = [], []
+        for doc_id, doc in enumerate(corpus_doc_list):
+            doc_token_list = doc.split()
+            doc_token_list_cleaned = [token.strip() for token in doc_token_list]
+            if doc_id not in test_doc_ids:
+                train_corpus_token_list += doc_token_list_cleaned
+            else:
+                test_corpus_token_list += doc_token_list_cleaned
+        ##########################################################################
+        # make train and test doc token lists
+        token_lists = []
         num_tokens_in_doc = mb_size * self.num_mbs_in_doc + (bptt_steps)
-        num_docs = len(corpus_token_list) / num_tokens_in_doc
-        included_num_tokens = num_docs * num_tokens_in_doc
-        corpus_token_list_resized = corpus_token_list[:included_num_tokens]
-        doc_token_lists = list(self.gen_doc_token_list(corpus_token_list_resized, num_tokens_in_doc))
-        num_total_docs = len(doc_token_lists)
+        for token_list in [train_corpus_token_list, test_corpus_token_list]:
+            # resize
+            num_train_docs = len(token_list) / num_tokens_in_doc
+            num_tokens_in_corpus = num_train_docs * num_tokens_in_doc
+            ##########################################################################
+            # split into docs
+            token_list_truncated = token_list[:num_tokens_in_corpus]
+            doc_token_lists = list(self.gen_doc_token_lists(token_list_truncated, num_tokens_in_doc))
+            token_lists.append(doc_token_lists)
+        train_doc_token_lists, test_doc_token_lists = token_lists
         ##########################################################################
-        print 'Num total docs: {}'.format(num_total_docs)
-        ##########################################################################
-        return doc_token_lists, num_total_docs
+        return train_doc_token_lists, test_doc_token_lists
 
-    def split_corpus(self):
-        ##########################################################################
-        # split corpus into train and test
-        num_train_docs = None
-        for divisor in [100, 10]:
-            num_train_docs = self.num_total_docs - (self.num_total_docs % divisor)
-            if num_train_docs > 1:
-                break
-        num_test_docs = self.num_total_docs - num_train_docs
-        ##########################################################################
-        print 'Split corpus into {} train docs and {} test docs'.format(num_train_docs, num_test_docs)
-        ##########################################################################
-        # get randomly sampled doc names for both test and train doc names
-        np.random.seed(42) # this makes sure test doc ids are always the same
-        test_doc_ids = np.random.choice(range(self.num_total_docs), num_test_docs, replace=False)
-        train_doc_ids = [i for i in range(self.num_total_docs) if i not in test_doc_ids]
-        assert len(train_doc_ids) == num_train_docs
-        ##########################################################################
-        num_tokens_in_train_docs = sum(len(doc_token_list) for doc_token_list
-                                       in np.asarray(self.doc_token_lists)[train_doc_ids])
-        num_tokens_per_doc = float(num_tokens_in_train_docs) / num_train_docs
-        print 'Num tokens in training docs : {} | Num tokens per doc: {}'.format(
-            num_tokens_in_train_docs, num_tokens_per_doc)
-        ##########################################################################
-        return test_doc_ids, train_doc_ids
-
-
-    def gen_train_block_name_and_id(self, num_epochs=None, block_order=None):
+    def gen_train_doc_id(self, num_epochs=None, block_order=None):
         ##########################################################################
         # inits
-        if num_epochs is None:
-            num_epochs = self.num_epochs
-            num_generator_ids = self.num_total_train_docs
-        else:
-            num_generator_ids = self.num_train_doc_ids
+        if num_epochs is None: num_epochs = self.num_epochs
         if block_order is None: block_order = self.block_order
         ##########################################################################
+        # arrange train_doc_ids
+        train_doc_ids = range(self.num_train_doc_ids)
         if block_order == 'shuffled':
-            np.random.shuffle(self.train_doc_ids)
+            np.random.shuffle(train_doc_ids)
             print 'Shuffled training doc ids'
         elif block_order == 'reversed':
-            self.train_doc_ids = self.train_doc_ids[::-1]
+            train_doc_ids = train_doc_ids[::-1]
             print 'Reversed training doc ids'
         elif block_order == 'chronological':
             pass
@@ -112,11 +98,9 @@ class Corpus(object):
                                  ' Please use: "chronological", "shuffled", or "reversed"')
         ##########################################################################
         # generator
-        train_doc_ids_across_epochs = self.train_doc_ids * num_epochs
-        for n in range(num_generator_ids):
-            block_id = train_doc_ids_across_epochs[n]
-            block_name = to_block_name(n+1)
-            yield (block_name, block_id)
+        doc_ids = train_doc_ids * num_epochs
+        for doc_id in doc_ids:
+            yield doc_id
 
 
     def gen_batch(self, mb_size, bptt_steps, doc_id):
@@ -124,9 +108,9 @@ class Corpus(object):
         # get doc token ids for either training or test doc
         if doc_id == 'test':
             doc_token_list = []
-            for i in self.test_doc_ids: doc_token_list += self.doc_token_lists[i]
+            for i in range(self.num_test_doc_ids): doc_token_list += self.test_doc_token_lists[i]  # merge test docs
         else:
-            doc_token_list = self.doc_token_lists[doc_id]
+            doc_token_list = self.train_doc_token_lists[doc_id]
         ##########################################################################
         # make batches_mat
         num_rows = self.num_mbs_in_doc * mb_size
@@ -157,7 +141,7 @@ class Corpus(object):
         # make vocab from freq_cutoff
         if not self.vocab_file_name:
             cv = CountVectorizer()
-            vectorized_corpus = cv.fit_transform(self.doc_token_lists).toarray()
+            vectorized_corpus = cv.fit_transform(self.train_doc_token_lists).toarray()
             types = cv.get_feature_names()
             type_freqs = np.asarray(vectorized_corpus.sum(axis=0)).ravel()
             assert len(type_freqs) == len(types)
@@ -206,9 +190,12 @@ class Corpus(object):
                                for cat in cat_list}
         ##########################################################################
         # replace out of vocab words with UNKNOWN token
-        for i in range(self.num_total_docs):
-            self.doc_token_lists[i] = [token if token in token_id_dict else "UNKNOWN"
-                                       for token in self.doc_token_lists[i]]
+        for i in range(self.num_train_doc_ids):
+            self.train_doc_token_lists[i] = [token if token in token_id_dict else "UNKNOWN"
+                                             for token in self.train_doc_token_lists[i]]
+        for i in range(self.num_test_doc_ids):
+            self.test_doc_token_lists[i] = [token if token in token_id_dict else "UNKNOWN"
+                                            for token in self.test_doc_token_lists[i]]
         ##########################################################################
         num_tokens, num_probes = len(token_list), len(probe_list)
         print 'Vocabulary size: {} | Num probes in vocab : {}'.format(num_tokens, num_probes)
