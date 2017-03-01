@@ -43,6 +43,8 @@ class DataBase:
         self.tf_idf_mat = load_corpus_data(self.model_name, 'tf_idf_mat')
         self.lex_div_traj = load_corpus_data(self.model_name, 'lex_div_traj')
         self.num_input_units = load_corpus_data(self.model_name, 'num_input_units')
+        self.num_blocks = load_corpus_data(self.model_name, 'num_blocks')
+
 
     def save_to_disk(self, mb_name, test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list):
         ##########################################################################
@@ -252,8 +254,7 @@ class DataBase:
         ##########################################################################
         with pd.HDFStore(self.ba_trajdf_path, mode='r') as store:
             saved_mb_names = store.select_column('trajdf', 'index').values
-        xaxis = map(lambda b: int(b) * self.num_iterations * self.num_mbs_in_doc,
-                    [b for b in saved_mb_names])
+        xaxis = map(lambda b: int(b), [mb_names for mb_names in saved_mb_names])
         ##########################################################################
         return xaxis
 

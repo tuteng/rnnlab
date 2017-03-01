@@ -16,8 +16,9 @@
                     <button name="{{btn_name}}" value="traj" class="dropbtn">{{btn_name}}</button>
                     {% if btn_name not in ['avgtrajBtn', 'trajBtn'] %}
                         <div class="dropdown-content">
-                            {% for block_name in block_names1 %}
-                            <button name="{{btn_name}}" value="{{block_name}}"><b>{{loop.index0+1}}.</b> {{block_name}}</button>
+                            {% for mb_name in mb_names1 %}
+                            <button name="{{btn_name}}" value="{{mb_name}}"><b>{{loop.index0+1}}.</b> {{mb_name}}
+                            </button>
                             {% endfor %}
                         </div>
                     {% endif %}
@@ -32,8 +33,9 @@
                     <button name="{{btn_name}}" value="traj" class="dropbtn">{{btn_name}}</button>
                     {% if not btn_name in ['delete', 'compprobes', 'freqhist'] %}
                         <div class="dropdown-content">
-                            {% for block_name in block_names1 %}
-                                <button name="{{btn_name}}" value="{{block_name}}"><b>{{loop.index0+1}}.</b> {{block_name}}</button>
+                            {% for mb_name in mb_names1 %}
+                            <button name="{{btn_name}}" value="{{mb_name}}"><b>{{loop.index0+1}}.</b> {{mb_name}}
+                            </button>
                             {% endfor %}
                         </div>
                     {% endif %}
@@ -51,12 +53,12 @@
                     {% for model_name2 in comparison_dict.model_names2 %}
                     {{model_name2}}&nbsp;
                     {% endfor %}
-                    <b>Model Class:</b> ({{comparison_dict.mclass}})
+                    <b>Group:</b> ({{comparison_dict.model_group}})
                 </h3>
                     <div>
-                        {% for block_name2 in comparison_dict.block_names2 %}
+                        {% for mb_name2 in comparison_dict.mb_names2 %}
                         <button name="loop_counters" value="{{outer_loop.index0}}_{{loop.index0}}" class="dropbtn">
-                            {{block_name2}}
+                            {{mb_name2}}
                         </button>
                          {% endfor %}
                     </div>

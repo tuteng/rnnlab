@@ -91,6 +91,9 @@ def model(model_name1):
     ##########################################################################
     # get model_names2 and block_names2_dict
     mb_names1 = make_mb_names1(model_name1)
+    print
+    print 'mb_names1'
+    print mb_names1
     comparison_dict_list, self_id = make_comparison_dict_list(model_name1, mb_names1, app_headers)
     print 'comparison_dict_list'
     for d in comparison_dict_list:
@@ -104,15 +107,16 @@ def model(model_name1):
         return redirect(url_for('log'))
     #########################################################################
     elif request.args.get('complete') is not None:
-        block_name1 = get_mb_name_from_request(request, 'complete', mb_names1)
-        return redirect(url_for('complete', model_name1=model_name1, block_name1=block_name1))
+        mb_name1 = get_mb_name_from_request(request, 'complete', mb_names1)
+        return redirect(url_for('complete', model_name1=model_name1, block_name1=mb_name1))
     ##########################################################################
     elif request.args.get('avg_trajs') is not None:
         database, imgs_desc = load_database_and_img_desc(model_name1, request, 'avg_trajs')
-        num_comparisons = 1
-        palette = cycle(Category10[max(3, num_comparisons)][:num_comparisons])
-        fig_tuple1 = (make_probes_ba_traj_fig([database], palette), 'mpl')  # TODO mgroup
-        fig_tuple2 = (make_test_pp_traj_fig([database], palette), 'mpl')
+        palette = cycle(['green', 'orange'])
+        model_group1, model_group2 = [database], [database]
+        fig_tuple1 = (
+        make_probes_ba_traj_fig(model_group1, model_group2, palette), 'mpl')  # TODO make model_group2 optional
+        fig_tuple2 = (make_test_pp_traj_fig(model_group1, model_group2, palette), 'mpl')
         fig_tuple3 = (make_probe_pp_traj_fig([database], palette), 'mpl')
         fig_tuple4 = (make_ba_pp_window_corr_fig(database), 'mpl')
         imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3, fig_tuple4)
@@ -181,43 +185,40 @@ def model(model_name1):
         if model_name_id != self_id:
             model_names1 = comparison_dict_list[self_id]['model_names2']
             model_names2 = comparison_dict_list[model_name_id]['model_names2']
-            block_name1 = comparison_dict_list[self_id]['block_names2'][block_name_id]
-            block_name2 = comparison_dict_list[model_name_id]['block_names2'][block_name_id]
-            # make mclasses
-            mclass1 = []
-            for model_name1 in model_names1: mclass1.append(load_database(model_name1, block_name1))
-            mclass2 = []
-            for model_name2 in model_names2: mclass2.append(load_database(model_name2, block_name2))
-            # desc
-            mb = block_name_to_mb(model_name1, block_name1)
-            imgs_desc = 'Model Class Comparison at Minibatch {:,}'.format(mb)
+            mb_name1 = comparison_dict_list[self_id]['mb_names2'][block_name_id]
+            mb_name2 = comparison_dict_list[model_name_id]['mb_names2'][block_name_id]
+            assert mb_name1 == mb_name2
+            # make model_groups
+            model_group1, model_group2 = [], []
+            for model_name1 in model_names1: model_group1.append(load_database(model_name1, mb_name1))
+            for model_name2 in model_names2: model_group2.append(load_database(model_name2, mb_name2))
             # figs
             palette = cycle(['green', 'orange'])
-            fig_tuple1 = (make_compare_ba_by_cat_fig(mclass1, mclass2, palette), 'mpl')
-            fig_tuple2 = (make_probes_ba_traj_fig(mclass1, mclass2, palette), 'mpl')
+            fig_tuple1 = (make_compare_ba_by_cat_fig(model_group1, model_group2, palette), 'mpl')
+            fig_tuple2 = (make_probes_ba_traj_fig(model_group1, model_group2, palette), 'mpl')
             fig_tuple3 = (
-            make_test_pp_traj_fig(mclass1, mclass2, palette), 'mpl')  # TODO test if sem works with more runs
-            fig_tuple4 = (make_probe_sim_comp_fig(mclass1, mclass2, palette), 'mpl')
-            fig_tuple5 = (make_neighbors_rbo_fig(mclass1, mclass2), 'mpl')
-            fig_tuple6 = (make_cat_conf_diff_fig(mclass1, mclass2), 'mpl')
-            fig_tuple7 = (make_pp_timing_ba_diff_corr_fig(mclass1, mclass2), 'mpl')
-            fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(mclass1, mclass2), 'mpl')
-            fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(mclass1, mclass2), 'mpl')
-            fig_tuple10 = (make_probe_doc_freq_ba_diff_corr_fig(mclass1, mclass2), 'mpl')  # TODO test this
+            make_test_pp_traj_fig(model_group1, model_group2, palette), 'mpl')  # TODO test if sem works with more runs
+            fig_tuple4 = (make_probe_sim_comp_fig(model_group1, model_group2, palette), 'mpl')
+            fig_tuple5 = (make_neighbors_rbo_fig(model_group1, model_group2), 'mpl')
+            fig_tuple6 = (make_cat_conf_diff_fig(model_group1, model_group2), 'mpl')
+            fig_tuple7 = (make_pp_timing_ba_diff_corr_fig(model_group1, model_group2), 'mpl')
+            fig_tuple8 = (make_probe_freq_ba_diff_corr_fig(model_group1, model_group2), 'mpl')
+            fig_tuple9 = (make_avg_probe_pp_ba_diff_corr_fig(model_group1, model_group2), 'mpl')
+            fig_tuple10 = (make_probe_doc_freq_ba_diff_corr_fig(model_group1, model_group2), 'mpl')
 
             # fig_tuples = []
-            # for cat in mclass1[0].cat_list:
-            #     fig_tuples.append((make_cat_probe_ba_comp_fig(mclass1, mclass2, cat), 'mpl'))
+            # for cat in model_group1[0].cat_list:
+            #     fig_tuples.append((make_cat_probe_ba_comp_fig(model_group1, model_group2, cat), 'mpl'))
 
 
             imgs = make_imgs(fig_tuple1, fig_tuple2, fig_tuple3,
                              fig_tuple4, fig_tuple5, fig_tuple6,
                              fig_tuple7, fig_tuple8, fig_tuple9, fig_tuple10)  # *fig_tuples)
+            imgs_desc = 'Model Class Comparison at Minibatch {:,}'.format(int(mb_name1))
 
-        else:  # self mclass comparison
-            block_name1 = mb_names1[block_name_id]
-            mb = block_name_to_mb(model_name1, block_name1)
-            imgs_desc = 'Self Model Class Comparison at Minibatch {:,}'.format(mb)
+        else:  # self model_group comparison
+            mb_name1 = mb_names1[block_name_id]
+            imgs_desc = 'Self Model Class Comparison at Minibatch {:,}'.format(int(mb_name1))
             imgs = None
     ##########################################################################
     elif request.args.get('comp_trajs') is not None:
@@ -260,7 +261,7 @@ def model(model_name1):
                            btn_names_top=btn_names_top,
                            btn_names_bottom=btn_names_bottom,
                            model_name1=model_name1,
-                           block_names1=mb_names1,  # TODO rename
+                           mb_names1=mb_names1,
                            comparison_dict_list=comparison_dict_list,
                            imgs=imgs,
                            imgs_desc=imgs_desc)

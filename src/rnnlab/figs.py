@@ -721,26 +721,26 @@ def make_cat_confusion_mat_fig(database):
     return fig
 
 
-def make_cat_conf_diff_fig(mclass1, mclass2):
+def make_cat_conf_diff_fig(model_group1, model_group2):
     ##########################################################################
     import seaborn as sns
     sns.set_style('white')
     ##########################################################################
     # inits
-    cat_list = mclass1[0].cat_list
+    cat_list = model_group1[0].cat_list
     num_cats = len(cat_list)
     ##########################################################################
     # load data
-    mclass_cat_conf_mat_list = []
+    model_group_cat_conf_mat_list = []
     mask = None
-    for n, mclass in enumerate([mclass1, mclass2]):
+    for n, model_group in enumerate([model_group1, model_group2]):
         nn = 0
-        mclass_probe_simmat = np.zeros((num_cats, num_cats))
-        for nn, database in enumerate(mclass):
+        model_group_probe_simmat = np.zeros((num_cats, num_cats))
+        for nn, database in enumerate(model_group):
             cat_conf_mat, mask = make_cat_conf_mat(database)
-            mclass_probe_simmat = mclass_probe_simmat + cat_conf_mat
-        mclass_cat_conf_mat_list.append(np.divide(mclass_probe_simmat, nn + 1))
-    cat_conf_mat_diff = np.subtract(*mclass_cat_conf_mat_list)
+            model_group_probe_simmat = model_group_probe_simmat + cat_conf_mat
+        model_group_cat_conf_mat_list.append(np.divide(model_group_probe_simmat, nn + 1))
+    cat_conf_mat_diff = np.subtract(*model_group_cat_conf_mat_list)
     ##########################################################################
     # fig
     figsize = (6, 6)
@@ -970,21 +970,21 @@ def make_comp_probes_ba_fig(database, probe_tuples):
     return fig
 
 
-def make_compare_ba_by_cat_fig(mclass1, mclass2, palette, dotted=False,
+def make_compare_ba_by_cat_fig(model_group1, model_group2, palette, dotted=False,
                                xaxis_labeled=False, grid=False, p_thr=0.01):
     #########################################################################
     # inits
-    cat_list = mclass1[-1].cat_list
+    cat_list = model_group1[-1].cat_list
     num_cats = len(cat_list)
     #########################################################################
     # load data
     xys = []
-    cat_mclass_ys_dict = {cat: [] for cat in cat_list}
-    for n, mclass in enumerate([mclass1, mclass2]):
-        ######################################################################### # TODO can i simplify this?
+    cat_model_group_ys_dict = {cat: [] for cat in cat_list}
+    for n, model_group in enumerate([model_group1, model_group2]):
+        #########################################################################
         # make tmp2_dict
         tmp_dict = {cat: [] for cat in cat_list}
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             if n == 0 and nn == 0:
                 cats_sorted_by_ba, cat_avg_cat_probe_ba_list_dict = database.get_ba_by_cat()
             else:
@@ -997,11 +997,11 @@ def make_compare_ba_by_cat_fig(mclass1, mclass2, palette, dotted=False,
         y = [np.mean(tmp2_dict[cat]) for cat in cats_sorted_by_ba]
         sem = [stats.sem(tmp2_dict[cat]) for cat in cats_sorted_by_ba]
         x = [i + 0.5 for i in range(num_cats)]
-        model_names = '\n'.join([db.model_name for db in mclass])
+        model_names = '\n'.join([db.model_name for db in model_group])
         xys.append((x, y, sem, model_names))
         #########################################################################
         # make dict for pvalue calculation
-        for cat in cats_sorted_by_ba: cat_mclass_ys_dict[cat].append(tmp2_dict[cat])
+        for cat in cats_sorted_by_ba: cat_model_group_ys_dict[cat].append(tmp2_dict[cat])
     #########################################################################
     # fig
     figsize = (3.2, 3.2)
@@ -1036,10 +1036,10 @@ def make_compare_ba_by_cat_fig(mclass1, mclass2, palette, dotted=False,
     ##########################################################################
     # annotate with p-values
     for n, cat in enumerate(cats_sorted_by_ba):
-        mclass1_y, mclass2_y = cat_mclass_ys_dict[cat]
-        pvalue = stats.ttest_rel(mclass1_y, mclass2_y)[1]
+        model_group1_y, model_group2_y = cat_model_group_ys_dict[cat]
+        pvalue = stats.ttest_rel(model_group1_y, model_group2_y)[1]
         diffs = []
-        for a, b in zip(mclass1_y, mclass2_y):
+        for a, b in zip(model_group1_y, model_group2_y):
             diff = a - b
             diffs.append(diff)
         if np.sum(diffs) > 0:
@@ -1070,15 +1070,15 @@ def make_compare_ba_by_cat_fig(mclass1, mclass2, palette, dotted=False,
     return fig
 
 
-def make_probes_ba_traj_fig(mclass1, mclass2, palette):
+def make_probes_ba_traj_fig(model_group1, model_group2, palette):
     ##########################################################################
     # load data
     xys = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_probes_ba_traj = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             db_probes_ba_traj.append(database.get_traj('probes_ba'))
-        x = mclass[0].get_mbs_axis()
+        x = model_group[0].get_mbs_axis()
         y = np.mean(np.asarray(db_probes_ba_traj), axis=0)
         sem = [stats.sem(probes_ba_list) for probes_ba_list in np.asarray(db_probes_ba_traj).T]
         xys.append((x, y, sem))
@@ -1115,15 +1115,15 @@ def make_probes_ba_traj_fig(mclass1, mclass2, palette):
     return fig
 
 
-def make_test_pp_traj_fig(mclass1, mclass2, palette):
+def make_test_pp_traj_fig(model_group1, model_group2, palette):
     ##########################################################################
     # load data
     xys = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_test_pp_traj = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             db_test_pp_traj.append(database.get_traj('test_pp'))
-        x = mclass[0].get_mbs_axis()
+        x = model_group[0].get_mbs_axis()
         y = np.mean(np.asarray(db_test_pp_traj), axis=0)
         sem = [stats.sem(test_pps) for test_pps in np.asarray(db_test_pp_traj).T]
         xys.append((x, y, sem))
@@ -1201,20 +1201,20 @@ def make_probe_pp_traj_fig(databases, palette):
     return fig
 
 
-def make_probe_sim_comp_fig(mclass1, mclass2, palette, num_bins=1000, num_samples=1000):
+def make_probe_sim_comp_fig(model_group1, model_group2, palette, num_bins=1000, num_samples=1000):
     ##########################################################################
     # load data
-    mclass_sim_lists = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    model_group_sim_lists = []
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_sim_lists = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             probes_acts_df = database.get_probes_acts_df()
             probe_simmat = calc_probe_sim_mat(probes_acts_df)
             probe_simmat[np.tril_indices(probe_simmat.shape[0], -1)] = np.nan
             probe_simmat_values = probe_simmat[~np.isnan(probe_simmat)]
             db_sim_lists.append(probe_simmat_values)
-        mclass_sim_lists.append(np.mean(np.asarray(db_sim_lists), axis=0))
-    x, y = mclass_sim_lists
+        model_group_sim_lists.append(np.mean(np.asarray(db_sim_lists), axis=0))
+    x, y = model_group_sim_lists
     ##########################################################################
     #  seaborn
     import seaborn as sns
@@ -1255,7 +1255,7 @@ def make_probe_sim_comp_fig(mclass1, mclass2, palette, num_bins=1000, num_sample
     axarr[1].xaxis.grid(True)
     ##########################################################################
     # plot sim hist
-    for n, probe_simmat_values in enumerate(mclass_sim_lists):
+    for n, probe_simmat_values in enumerate(model_group_sim_lists):
         step_size = 1.0 / num_bins
         bins = np.arange(0, 1, step_size)
         hist, _ = np.histogram(probe_simmat_values, bins=bins)
@@ -1268,24 +1268,24 @@ def make_probe_sim_comp_fig(mclass1, mclass2, palette, num_bins=1000, num_sample
     return fig
 
 
-def make_neighbors_rbo_fig(mclass1, mclass2, sort_by='mean', num_neighbors=50):
+def make_neighbors_rbo_fig(model_group1, model_group2, sort_by='mean', num_neighbors=50):
     ##########################################################################
     # inits
-    cat_list = mclass1[0].cat_list
-    cat_probe_list_dict = mclass1[0].cat_probe_list_dict
-    num_probes = len(mclass1[0].probe_list)
+    cat_list = model_group1[0].cat_list
+    cat_probe_list_dict = model_group1[0].cat_probe_list_dict
+    num_probes = len(model_group1[0].probe_list)
     ##########################################################################
     # load data
-    mclass_probe_simmat_list = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    model_group_probe_simmat_list = []
+    for n, model_group in enumerate([model_group1, model_group2]):
         nn = 0
-        mclass_probe_simmat = np.zeros((num_probes, num_probes))
-        for nn, database in enumerate(mclass):
+        model_group_probe_simmat = np.zeros((num_probes, num_probes))
+        for nn, database in enumerate(model_group):
             probes_acts_df = database.get_probes_acts_df()
             print 'Neighbors rbo fig'
-            mclass_probe_simmat = mclass_probe_simmat + calc_probe_sim_mat(probes_acts_df)
-        mclass_probe_simmat_list.append(np.divide(mclass_probe_simmat, nn + 1))
-    mclass1_probe_simmat, mclass2_probe_simmat = mclass_probe_simmat_list
+            model_group_probe_simmat = model_group_probe_simmat + calc_probe_sim_mat(probes_acts_df)
+        model_group_probe_simmat_list.append(np.divide(model_group_probe_simmat, nn + 1))
+    model_group1_probe_simmat, model_group2_probe_simmat = model_group_probe_simmat_list
     ##########################################################################
     # calculate rbo for all probes
     cat_rbo_list = []
@@ -1296,8 +1296,10 @@ def make_neighbors_rbo_fig(mclass1, mclass2, sort_by='mean', num_neighbors=50):
         cat_probes = cat_probe_list_dict[cat]
         cat_probe_rbo_list = []
         for probe in cat_probes:
-            neighbors1 = get_neighbors_from_probe_simmat(mclass1[0], mclass1_probe_simmat, probe, num_neighbors)
-            neighbors2 = get_neighbors_from_probe_simmat(mclass2[0], mclass2_probe_simmat, probe, num_neighbors)
+            neighbors1 = get_neighbors_from_probe_simmat(model_group1[0], model_group1_probe_simmat, probe,
+                                                         num_neighbors)
+            neighbors2 = get_neighbors_from_probe_simmat(model_group2[0], model_group2_probe_simmat, probe,
+                                                         num_neighbors)
             probe_rbo = calc_neighbors_rbo(neighbors1, neighbors2, p=0.98)
             probe_rbo_list.append(probe_rbo)
             cat_probe_rbo_list.append(probe_rbo)
@@ -1394,25 +1396,27 @@ def make_cat_probe_ba_comp_fig(databases, cat, max_num_probes=50, ylim=20):
     return fig
 
 
-def make_probe_doc_freq_ba_diff_corr_fig(mclass1, mclass2, annotate_x_thr=100, annotate_p=1):
+def make_probe_doc_freq_ba_diff_corr_fig(model_group1, model_group2, annotate_x_thr=0.20, annotate_p=0.5):
     ##########################################################################
     # inits
-    probe_list = mclass1[0].probe_list
-    ##########################################################################
+    probe_list = model_group1[0].probe_list
+    ########################################################################## # TODO somethign wrong with doc freq
     # load data
-    mclass_avg_probe_ba_lists = []
-    mclass_pp_timing_lists = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    model_group_avg_probe_ba_lists = []
+    model_group_probe_doc_freq_lists = []
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_probe_doc_freq_lists = []
         db_avg_probe_ba_lists = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             probe_doc_freq_dict = load_corpus_data(database.model_name, 'probe_doc_freq_dict')
-            probe_doc_freq_list = [np.sum([1 for doc_freq in probe_doc_freq_dict[probe] if doc_freq > 0])
-                                   for probe in probe_list]
+            probe_doc_freq_list = [np.sum([1 if doc_freq > 0 else 0 for doc_freq in probe_doc_freq_dict[probe]])
+                                   / float(len(probe_doc_freq_dict[probe])) for probe in probe_list]
             db_probe_doc_freq_lists.append(probe_doc_freq_list)
             db_avg_probe_ba_lists.append(database.get_avg_probe_ba_list())
-    x = np.subtract(*mclass_pp_timing_lists)  # TODO do i need to do tolist()?
-    y = np.subtract(*mclass_avg_probe_ba_lists)
+        model_group_probe_doc_freq_lists.append(np.mean(np.asarray(db_probe_doc_freq_lists), axis=0))
+        model_group_avg_probe_ba_lists.append(np.mean(np.asarray(db_avg_probe_ba_lists), axis=0))
+    x = np.subtract(*model_group_probe_doc_freq_lists).tolist()
+    y = np.subtract(*model_group_avg_probe_ba_lists).tolist()
     ##########################################################################
     # seaborn
     import seaborn as sns
@@ -1430,7 +1434,7 @@ def make_probe_doc_freq_ba_diff_corr_fig(mclass1, mclass2, annotate_x_thr=100, a
     ax.spines['top'].set_visible(False)
     ax.tick_params(axis='both', which='both', top='off', right='off')
     ax.set_ylabel('Balanced Accuracy Difference', fontsize=ax_font_size)
-    ax.set_xlabel('Perplexity Trajectory Timing', fontsize=ax_font_size)
+    ax.set_xlabel('Probe Normalized Document Frequency Difference', fontsize=ax_font_size)
     ##########################################################################
     # plot
     ax.scatter(x, y, s=markersize, facecolor='black', zorder=2)
@@ -1451,20 +1455,20 @@ def make_probe_doc_freq_ba_diff_corr_fig(mclass1, mclass2, annotate_x_thr=100, a
     return fig
 
 
-def make_pp_timing_ba_diff_corr_fig(mclass1, mclass2, pp_timing='pp_min_thr', probe_max_freq_thr=None,
+def make_pp_timing_ba_diff_corr_fig(model_group1, model_group2, pp_timing='pp_min_thr', probe_max_freq_thr=None,
                                     probe_min_freq_thr=None, pp_thr=None, annotate_x_thr=10, annotate_p=0.3):
     ##########################################################################
     # inits
-    probe_list = mclass1[0].probe_list
-    probe_cf_traj_dict = mclass1[0].probe_cf_traj_dict
+    probe_list = model_group1[0].probe_list
+    probe_cf_traj_dict = model_group1[0].probe_cf_traj_dict
     ##########################################################################
     # load data
-    mclass_avg_probe_ba_lists = []
-    mclass_pp_timing_lists = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    model_group_avg_probe_ba_lists = []
+    model_group_pp_timing_lists = []
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_pp_timing_lists = []
         db_avg_probe_ba_lists = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             if pp_timing == 'pp_min_thr':
                 if pp_thr is None: pp_thr = database.num_input_units
                 avg_probe_pp_trajs_mat = database.get_trajs_mat(database.probe_list, 'avg_probe_pp')
@@ -1475,10 +1479,10 @@ def make_pp_timing_ba_diff_corr_fig(mclass1, mclass2, pp_timing='pp_min_thr', pr
                     'rnnlab: Please use "min as timing argument')  # TODO define pp timing in other ways
             db_pp_timing_lists.append(pp_timing_list)
             db_avg_probe_ba_lists.append(database.get_avg_probe_ba_list())
-        mclass_pp_timing_lists.append(np.mean(db_pp_timing_lists, axis=0))
-        mclass_avg_probe_ba_lists.append(np.mean(db_avg_probe_ba_lists, axis=0))
-    x = np.subtract(*mclass_pp_timing_lists)
-    y = np.subtract(*mclass_avg_probe_ba_lists)
+        model_group_pp_timing_lists.append(np.mean(db_pp_timing_lists, axis=0))
+        model_group_avg_probe_ba_lists.append(np.mean(db_avg_probe_ba_lists, axis=0))
+    x = np.subtract(*model_group_pp_timing_lists)
+    y = np.subtract(*model_group_avg_probe_ba_lists)
     ##########################################################################
     # filter probes by frequency
     if probe_max_freq_thr is not None:
@@ -1533,21 +1537,21 @@ def make_pp_timing_ba_diff_corr_fig(mclass1, mclass2, pp_timing='pp_min_thr', pr
     return fig
 
 
-def make_probe_freq_ba_diff_corr_fig(mclass1, mclass2, annotate_x_thr=5000, clip_max_probe_freq=1000):
+def make_probe_freq_ba_diff_corr_fig(model_group1, model_group2, annotate_x_thr=5000, clip_max_probe_freq=1000):
     ##########################################################################
     # inits
-    probe_list = mclass1[0].probe_list
-    probe_cf_traj_dict = mclass1[0].probe_cf_traj_dict
+    probe_list = model_group1[0].probe_list
+    probe_cf_traj_dict = model_group1[0].probe_cf_traj_dict
     ##########################################################################
     # load data
-    mclass_avg_probe_ba_lists = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    model_group_avg_probe_ba_lists = []
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_avg_probe_ba_list = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             db_avg_probe_ba_list.append(database.get_avg_probe_ba_list())
-        mclass_avg_probe_ba_lists.append(np.mean(db_avg_probe_ba_list, axis=0))
+        model_group_avg_probe_ba_lists.append(np.mean(db_avg_probe_ba_list, axis=0))
     x = [np.clip(probe_cf_traj_dict[probe][-1], 1, clip_max_probe_freq) for probe in probe_list]
-    y = np.subtract(*mclass_avg_probe_ba_lists)
+    y = np.subtract(*model_group_avg_probe_ba_lists)
     ##########################################################################
     # seaborn
     import seaborn as sns
@@ -1638,24 +1642,24 @@ def make_probe_ba_vs_pp_fig(database, probe):
     return fig
 
 
-def make_avg_probe_pp_ba_diff_corr_fig(mclass1, mclass2, annotate_x_thr=50000):
+def make_avg_probe_pp_ba_diff_corr_fig(model_group1, model_group2, annotate_x_thr=50000):
     ##########################################################################
     # inits
-    probe_list = mclass1[0].probe_list
+    probe_list = model_group1[0].probe_list
     ##########################################################################
     # load data
-    mclass_avg_probe_ba_lists = []
-    mclass_avg_probe_pp_lists = []
-    for n, mclass in enumerate([mclass1, mclass2]):
+    model_group_avg_probe_ba_lists = []
+    model_group_avg_probe_pp_lists = []
+    for n, model_group in enumerate([model_group1, model_group2]):
         db_avg_probe_ba_lists = []
         db_avg_probe_pp_lists = []
-        for nn, database in enumerate(mclass):
+        for nn, database in enumerate(model_group):
             db_avg_probe_ba_lists.append(database.get_avg_probe_ba_list())
             db_avg_probe_pp_lists.append(database.get_avg_probe_pp_list(clip=True))
-        mclass_avg_probe_ba_lists.append(np.mean(db_avg_probe_ba_lists, axis=0))
-        mclass_avg_probe_pp_lists.append(np.mean(db_avg_probe_pp_lists, axis=0))
-    x = np.subtract(*mclass_avg_probe_pp_lists)
-    y = np.subtract(*mclass_avg_probe_ba_lists)
+        model_group_avg_probe_ba_lists.append(np.mean(db_avg_probe_ba_lists, axis=0))
+        model_group_avg_probe_pp_lists.append(np.mean(db_avg_probe_pp_lists, axis=0))
+    x = np.subtract(*model_group_avg_probe_pp_lists)
+    y = np.subtract(*model_group_avg_probe_ba_lists)
     ##########################################################################
     # seaborn
     import seaborn as sns

@@ -61,9 +61,6 @@ class RNN():
         corpus_kwargs['num_epochs'] = self.num_epochs
         self.corpus = Corpus(**corpus_kwargs)
         ##########################################################################
-        # calc stop_mb
-        self.stop_mb = self.corpus.num_train_doc_ids * self.num_reps * self.corpus.num_mbs_in_doc
-        ##########################################################################
         # create rnn_graph
         num_input_units = len(self.corpus.token_list)
         self.rnn_graph = create_rnn_graph(num_input_units, self.configs_dict)
@@ -71,12 +68,20 @@ class RNN():
         # assign instance variables
         self.model_name = self.configs_dict['model_name']
         self.block_order = str(self.configs_dict['block_order'])
-        self.save_ev_mb = int(self.configs_dict['save_ev_mb'])
+        self.n_data = int(self.configs_dict['n_data'])
         self.mb_size = int(self.configs_dict['mb_size'])
         self.num_hidden_units = int(self.configs_dict['num_hidden_units'])
         self.bptt_steps = int(self.configs_dict['bptt_steps'])
         self.num_ba_samples = int(self.configs_dict['num_ba_samples'])
         self.probes_ba_list = []
+        ##########################################################################
+        # calc instance variables
+        self.stop_mb = self.corpus.num_train_doc_ids * self.num_reps * self.corpus.num_mbs_in_doc
+        print 'Stop minibatch: {:,}'.format(self.stop_mb)
+        mb_n = int(self.stop_mb / self.n_data)
+        self.data_mbs = np.arange(mb_n, (mb_n * self.n_data) + mb_n, mb_n)
+        print 'self.data_mbs :', self.data_mbs
+
 
 
     def train(self):
@@ -84,8 +89,9 @@ class RNN():
         self.prepare_training()
         ##########################################################################
         # inits
-        elapsed_start = time.time()
-        mbs, completed = 0, False
+        start = time.time()
+        mb = 0
+        prev_num_data_mbs_passed = 0
         ##########################################################################
         # save to data base before training
         print 'Saving data from untrained model...'
@@ -93,24 +99,37 @@ class RNN():
         ##########################################################################
         # training blocks
         for doc_id in self.corpus.gen_train_doc_id():
-            if doc_id == self.stop_mb: break
-            self.print_train_stats(elapsed_start, doc_id, mbs)
             ##########################################################################
             # training iterations
             for iteration_counter in xrange(self.num_iterations):
                 ##########################################################################
                 # batch
                 for (X, Y) in self.corpus.gen_batch(self.mb_size, self.bptt_steps, doc_id):
-                    mbs += 1
+                    mb += 1
                     self.rnn_graph.sess.run(self.rnn_graph.train_step,
                                             feed_dict={self.rnn_graph.x: X, self.rnn_graph.y: Y})
             ##########################################################################
             # data_step
-            if mbs % self.save_ev_mb == 0:
-                self.data_step(to_mb_name(mbs))
+            is_data, prev_num_data_mbs_passed = self.is_data_mb(mb, prev_num_data_mbs_passed)
+            if is_data: self.data_step(to_mb_name(mb))
+            ##########################################################################
+            # console output
+            self.print_train_stats(start, doc_id, mb)
+            ##########################################################################
+            # at end of training, close session and upload data
+            if mb > self.data_mbs[-1]:
+                self.complete_training()
+                break
+
+    def is_data_mb(self, mb, prev_num_data_mbs_passed):
         ##########################################################################
-        # at end of training, close session and upload data
-        self.complete_training()
+        num_data_mbs_passed = np.where(mb > self.data_mbs)[0].shape[0]
+        print num_data_mbs_passed, prev_num_data_mbs_passed
+        is_data_mb = num_data_mbs_passed > prev_num_data_mbs_passed
+        prev_num_data_mbs_passed = num_data_mbs_passed
+        ##########################################################################
+        return is_data_mb, prev_num_data_mbs_passed
+
 
     def data_step(self, mb_name):
         ##########################################################################
@@ -165,6 +184,7 @@ class RNN():
         ##########################################################################
         return [test_pp, probes_pp, avg_probe_pp_list, probes_ba, avg_probe_ba_list]
 
+
     def save_ckpt(self, mb_name):
         ##########################################################################
         ckpt_outfile = "checkpoint_mb_{}.ckpt".format(mb_name)
@@ -207,10 +227,14 @@ class RNN():
                  cat_probe_list_dict=self.corpus.cat_probe_list_dict)
         ##########################################################################
         # make corpus data
+
+        # TODO hack
+        data_mbs = [0, 3200, 6400]
+
         probe_cf_traj_dict, num_probe_occurences, probe_doc_freq_dict = make_probe_cf_traj_dict(
-            self.corpus, self.save_ev_mb)
-        tf_idf_mat = make_tf_idf_mat(self.corpus, self.save_ev_mb)
-        lex_div_traj = make_lex_div_traj(self.corpus, self.save_ev_mb)
+            self.corpus, data_mbs)
+        tf_idf_mat = make_tf_idf_mat(self.corpus, data_mbs)
+        lex_div_traj = make_lex_div_traj(self.corpus, data_mbs)
         num_input_units = len(self.corpus.token_list)
         ##########################################################################
         # save corpus data
@@ -220,6 +244,7 @@ class RNN():
                  probe_cf_traj_dict=probe_cf_traj_dict,
                  num_blocks=self.corpus.num_blocks,
                  stop_mb=self.stop_mb,
+                 data_mbs=self.data_mbs,
                  tf_idf_mat=tf_idf_mat,
                  lex_div_traj=lex_div_traj,
                  num_input_units=num_input_units,
@@ -452,7 +477,7 @@ class RNN():
             'num_reps': 20,
             'block_order': 'chronological',
             'optimizer': 'adagrad',
-            'save_ev_mb': 100000,
+            'n_data': 5,
             'num_ba_samples': 0,
             'model_name': self.make_model_name(flavor),
             'flavor': flavor,

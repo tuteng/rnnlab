@@ -26,18 +26,6 @@ from database import load_rnnlabrc
 runs_dir = os.path.abspath(load_rnnlabrc('runs_dir'))
 
 
-def gen_neighbor_name_and_sim(neighbors_for_probe):  # TODO get rid of this
-    ##########################################################################
-    # generate neighbors_name, neighbors_sim
-    num_total_neighbors = len(neighbors_for_probe)
-    for neighbor_id in range(num_total_neighbors):
-        ##########################################################################
-        neighbor_name = neighbors_for_probe[neighbor_id][0]
-        neighbor_sim = neighbors_for_probe[neighbor_id][1]
-        if neighbor_id != 0:
-            ##########################################################################
-            yield neighbor_name, neighbor_sim
-
 
 def gen_user_configs():
     ##########################################################################
@@ -67,7 +55,8 @@ def gen_user_configs():
 
 def to_mb_name(num_mbs):
     ##########################################################################
-    return ('0000000' + str(num_mbs))[-6:]
+    zeros = '0000000'
+    return (zeros + str(num_mbs))[-len(zeros):]
 
 
 def mb_name_exists(model_name, mb_name):
@@ -295,27 +284,20 @@ def load_filtered_log_entries(app_headers, allow_incomplete=True):
     return filtered_log_entries, filtered_headers
 
 
-def make_mb_names1(model_name, num_display=5):
+def make_mb_names1(model_name, num_display=5):  # TODO test this
     ##########################################################################
     # saved mb names
     saved_mb_names = get_saved_mb_names_fast(model_name)
-    ##########################################################################
-    # inits
-    saved_mbs = [int(mb_name) for mb_name in saved_mb_names]
-    save_ev_mb = int(load_configs_dict(model_name)['save_ev_mb'])
-    stop_mb = int(load_corpus_data(model_name, 'stop_mb'))
-    ##########################################################################
-    # make candidates
-    mb1_candidates = np.arange(0, stop_mb, save_ev_mb)
-    ########################################################################## # TODO does this work?
-    # make mb_names1
-    step = len(mb1_candidates) / num_display
-    sliced = mb1_candidates[::step]
-    filtered = filter(lambda x: x in saved_mbs, sliced)
-    mb_names1 = [to_mb_name(mb) for mb in filtered]
-    ##########################################################################
-    # if empty, get last
-    if not mb_names1: mb_names1 = [saved_mb_names[-1]]
+    num_saved_mb_names = len(saved_mb_names)
+    if num_saved_mb_names > num_display:
+        from fractions import gcd
+        while not gcd(num_display, num_saved_mb_names) == num_display:
+            num_saved_mb_names -= 1
+        step = num_saved_mb_names / num_display
+        ids = np.arange(0, (num_saved_mb_names + step), step)
+        mb_names1 = np.asarray(saved_mb_names)[ids]  # TODO reverse slice this
+    else:
+        mb_names1 = [saved_mb_names[-1]]
     ##########################################################################
     return mb_names1
 
@@ -328,7 +310,7 @@ def make_comparison_dict_list(model_name1, mb_names1, log_headers, limit_to_same
     else: flavors = ['srn', 'lstm', 'irnn', 'scrn']
     headers = ['num_reps'] + log_headers  # num reps must be first in list
     filtered_log_entries, filtered_headers = load_filtered_log_entries(headers)
-    model_names2_tuples = [(log_entry[1], '+'.join(log_entry[2:-2])) for log_entry in filtered_log_entries
+    model_names2_tuples = [(log_entry[1], '&'.join(log_entry[2:-2])) for log_entry in filtered_log_entries
                            if log_entry[1].split('_')[1] in flavors
                            and int(log_entry[0]) == num_reps1]  # compare only models with same num_reps
     model_names2_tuples = sorted(model_names2_tuples, key=itemgetter(1))  # required for groupby
@@ -336,7 +318,7 @@ def make_comparison_dict_list(model_name1, mb_names1, log_headers, limit_to_same
     # make comparison_dict_list
     mbs1_set = set(mb_names1)
     comparison_dict_list = []
-    for mclass, group in groupby(model_names2_tuples, itemgetter(1)):
+    for model_group, group in groupby(model_names2_tuples, itemgetter(1)):
         model_names2 = [tuple[0] for tuple in list(group)]
         ##########################################################################
         # make comparison_dict
@@ -347,7 +329,7 @@ def make_comparison_dict_list(model_name1, mb_names1, log_headers, limit_to_same
         comparison_dict = {'mb_names2': mb_names2,
                            'model_names2': model_names2,
                            'self': is_self,
-                           'mclass': mclass}
+                           'model_group': model_group}
         ##########################################################################
         # add dict to list
         comparison_dict_list.append(comparison_dict)
@@ -430,12 +412,12 @@ def calc_neighbors_rbo(neighbors1, neighbors2, p=0.98):
     return rbo_ext
 
 
-def make_tf_idf_mat(corpus, save_ev_mb=None):
+def make_tf_idf_mat(corpus, data_mbs=None):
     ##########################################################################
     print 'Making tf-idf mat using train docs...'
     ##########################################################################
     # fit tf-idf model
-    if save_ev_mb is None: save_ev_mb = 1
+    if data_mbs is None: data_mbs = 1
     doc_str_list = [] # scikit requires a list of space-separated words
     tfidf = TfidfVectorizer(vocabulary=corpus.token_list)
     for doc_id in corpus.gen_train_doc_id(num_epochs=1):
@@ -446,7 +428,7 @@ def make_tf_idf_mat(corpus, save_ev_mb=None):
     # get values at saved timepoints
     doc_str_list = []
     for n, doc_id in enumerate(corpus.gen_train_doc_id()):
-        if (n * corpus.num_mbs_in_doc) % save_ev_mb == 0:
+        if (n * corpus.num_mbs_in_doc) in data_mbs:
             doc_str = ' '.join(corpus.train_doc_token_lists[doc_id])
             doc_str_list.append(doc_str)
     tf_idf_mat = tfidf.fit_transform(doc_str_list).toarray()
@@ -454,7 +436,7 @@ def make_tf_idf_mat(corpus, save_ev_mb=None):
     return tf_idf_mat
 
 
-def make_probe_cf_traj_dict(corpus, save_ev_mb, min_probe_freq=10,
+def make_probe_cf_traj_dict(corpus, data_mbs, min_probe_freq=10,
                             verbose=False):  # TODO link this number to num_ba_samples
     ##########################################################################
     print 'Making probe_cf_traj using train docs...'
@@ -489,21 +471,20 @@ def make_probe_cf_traj_dict(corpus, save_ev_mb, min_probe_freq=10,
     for probe, probe_freq_traj in probe_cf_traj_dict.iteritems():
         cfs =[]
         for n, cf in enumerate(probe_cf_traj_dict[probe]):
-            if (n * corpus.num_mbs_in_doc) % save_ev_mb == 0:
+            if (n * corpus.num_mbs_in_doc) in data_mbs:
                 cfs.append(cf)
         probe_cf_traj_dict[probe] = cfs
     ##########################################################################
     return probe_cf_traj_dict, num_probe_occurences, probe_doc_freq_dict
 
 
-def make_lex_div_traj(corpus, save_ev_mb=None):
+def make_lex_div_traj(corpus, data_mbs):
     ##########################################################################
     print 'Making lex_div_traj using train docs...'
     ##########################################################################
-    if save_ev_mb is None: save_ev_mb = 1
     lex_div_traj =[]
     for n, doc_id in enumerate(corpus.gen_train_doc_id()):
-        if (n * corpus.num_mbs_in_doc) % save_ev_mb == 0:
+        if (n * corpus.num_mbs_in_doc) in data_mbs:
             doc_probe_list = corpus.train_doc_token_lists[doc_id]
             num_unique_tokens = len(list(set(doc_probe_list)))
             num_total_tokens = len(doc_probe_list)
@@ -661,16 +642,20 @@ def calc_hca(database, acts_cols, cat_col, epochs=30):
 def calc_ba_list(database, num_ba_samples, ba_method='exemplar', thr_step=0.001):
     ##########################################################################
     # make thr_ranges
-    num_cpus = 3
-    thr_start, thr_end = 0.7, 1.0  # TODO how flexible is this?
-    thr_num_steps = round(((thr_end - thr_start) / thr_step) / num_cpus, 2)
+    thr_start, thr_end, num_cpus = 0.7, 1.0, 3  # range must be divisible by num_cpus
+    thr_num_steps = ((thr_end - thr_start) / thr_step) / num_cpus
+    if not np.isclose(np.array([thr_num_steps % 1]), np.array([0])):
+        raise ValueError(
+            'rnnlab: Threshold range defined by "thr_start" and "thr_end" must be divisible by "thr_steps')
+    else:
+        thr_num_steps = int(thr_num_steps)
     thr_lists = []
     while True:
-        thr_list = np.arange(thr_start, thr_start + thr_num_steps * thr_step, thr_step)
+        thr_list = np.arange(thr_start, thr_start + thr_num_steps * thr_step + thr_step, thr_step)
         thr_lists.append(thr_list)
         thr_start = float(thr_list[-1])
-        time.sleep(0.5)
-        if round(thr_end, 2) == round(thr_start, 2):  # TODO can i use numpy equal approximation?
+        time.sleep(0.5)  # in case of infinite looping
+        if round(thr_end, 2) == round(thr_start, 2):
             break
     ##########################################################################
     start = time.time()
